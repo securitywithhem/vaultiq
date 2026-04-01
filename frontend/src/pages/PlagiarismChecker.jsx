@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
 import LoadingSpinner from '../components/LoadingSpinner';
-import useDocumentTitle from '../hooks/useDocumentTitle';
+
 import styles from './PlagiarismChecker.module.css';
 
 const PlagiarismChecker = () => {
-  useDocumentTitle('AI Check | VaultIQ');
+
   const [inputText, setInputText] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [result, setResult] = useState(null);

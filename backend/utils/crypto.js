@@ -30,17 +30,15 @@ function encrypt(buffer) {
 }
 
 function decrypt(encryptedBuffer, iv) {
-  try {
-    if (typeof iv === 'string') {
-      iv = Buffer.from(iv, 'hex');
-    }
-    
-    const decipher = crypto.createDecipheriv(ALGO, KEY, iv);
-    return Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
-  } catch (err) {
-    console.error('[crypto.decrypt]', err.message);
-    throw new Error('Failed to decrypt block (verify key validity)');
+  const decipher = createDecipher(iv);
+  return Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
+}
+
+function createDecipher(iv) {
+  if (typeof iv === 'string') {
+    iv = Buffer.from(iv, 'hex');
   }
+  return crypto.createDecipheriv(ALGO, KEY, iv);
 }
 
 function sha256(buffer) {
@@ -55,5 +53,6 @@ function sha256(buffer) {
 module.exports = {
   encrypt,
   decrypt,
+  createDecipher,
   sha256
 };

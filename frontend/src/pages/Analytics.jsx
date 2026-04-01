@@ -3,12 +3,11 @@ import Navbar from '../components/Navbar';
 import api from '../services/api';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import LoadingSpinner from '../components/LoadingSpinner';
-import useDocumentTitle from '../hooks/useDocumentTitle';
-import { formatFileSize } from '../utils/formatters';
+import { formatFileSize } from '../utils/format';
 import styles from './Analytics.module.css';
 
 const Analytics = () => {
-  useDocumentTitle('Analytics | VaultIQ');
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 

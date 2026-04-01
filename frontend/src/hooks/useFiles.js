@@ -6,13 +6,15 @@ export const useFiles = () => {
   const [files, setFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchFiles = useCallback(async () => {
+  const fetchFiles = useCallback(async (signal) => {
     setIsLoading(true);
     try {
-      const data = await fileService.getFiles();
+      const data = await fileService.getFiles({ signal });
       setFiles(data);
     } catch (err) {
-      toast.error('Failed to load files');
+      if (err.name !== 'CanceledError') {
+        toast.error('Failed to load files');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import Navbar from '../components/Navbar';
 import UploadZone from '../components/UploadZone';
 import FileCard from '../components/FileCard';
@@ -13,8 +13,14 @@ const Dashboard = () => {
   const { files, isLoading, fetchFiles, addFileOptimistic, deleteFile } = useFiles();
 
   useEffect(() => {
-    fetchFiles();
+    const controller = new AbortController();
+    fetchFiles(controller.signal);
+    return () => controller.abort();
   }, [fetchFiles]);
+
+  const sortedFiles = useMemo(() => 
+    [...files].sort((a,b) => new Date(b.uploaded_at) - new Date(a.uploaded_at))
+  , [files]);
 
   const handleDownload = async (id, filename) => {
     await fileService.downloadFile(id, filename);
@@ -43,14 +49,14 @@ const Dashboard = () => {
                 <div key={i} className={styles.skeletonCard} />
               ))}
             </div>
-          ) : files.length === 0 ? (
+          ) : sortedFiles.length === 0 ? (
             <EmptyState 
               message="No files yet." 
               submessage="Upload your first encrypted file above." 
             />
           ) : (
             <div className={styles.grid}>
-              {files.map(file => (
+              {sortedFiles.map(file => (
                 <FileCard 
                   key={file.id} 
                   file={file} 

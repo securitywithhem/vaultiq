@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import LoadingSpinner from '../components/LoadingSpinner';
-import useDocumentTitle from '../hooks/useDocumentTitle';
+
 import styles from './Auth.module.css';
 
 const Register = () => {
-  useDocumentTitle('Register | VaultIQ');
+
   const [formData, setFormData] = useState({ fullName: '', email: '', password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
   const [strength, setStrength] = useState(0);

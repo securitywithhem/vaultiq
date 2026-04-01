@@ -6,8 +6,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import Analytics from './pages/Analytics';
-import PlagiarismChecker from './pages/PlagiarismChecker';
+import LoadingSpinner from './components/LoadingSpinner';
+
+const Analytics = React.lazy(() => import('./pages/Analytics'));
+const PlagiarismChecker = React.lazy(() => import('./pages/PlagiarismChecker'));
 
 const App = () => {
   return (
@@ -43,8 +45,16 @@ const App = () => {
         <Route path="/" element={<ProtectedRoute />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="plagiarism" element={<PlagiarismChecker />} />
+          <Route path="analytics" element={
+            <React.Suspense fallback={<LoadingSpinner />}>
+              <Analytics />
+            </React.Suspense>
+          } />
+          <Route path="plagiarism" element={
+            <React.Suspense fallback={<LoadingSpinner />}>
+              <PlagiarismChecker />
+            </React.Suspense>
+          } />
         </Route>
 
         {/* Fallback */}

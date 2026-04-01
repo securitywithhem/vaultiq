@@ -1,3 +1,4 @@
+require('dotenv').config();
 /**
  * @file server.js
  * @description Main entry point for the VaultIQ Express backend
@@ -5,7 +6,7 @@
  * @exports app
  */
 
-require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -34,12 +35,23 @@ if (process.env.ENCRYPTION_KEY.length !== 64) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.options('*', cors());
 app.use(cors({
-  origin: ['http://localhost:3000'],
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition'],
   credentials: true
 }));
+
+app.use(require('compression')());
+
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.path}`);
+    next();
+  });
+}
 
 app.use(express.json({ limit: '50mb' }));
 
@@ -68,6 +80,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT);
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 
 module.exports = app;

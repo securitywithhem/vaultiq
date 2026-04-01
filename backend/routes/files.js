@@ -8,7 +8,7 @@
 const express = require('express');
 const multer = require('multer');
 const { authenticateToken } = require('../middleware/auth');
-const { encrypt, decrypt, sha256 } = require('../utils/crypto');
+const { encrypt, decrypt, sha256, createDecipher } = require('../utils/crypto');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../utils/s3');
 const { supabaseAdmin } = require('../utils/supabase');
 const { logEvent } = require('../utils/hdfsLogger');
@@ -19,9 +19,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 // Upload a new file
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ error: 'No valid file uploaded' });
-    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (!req.file.buffer) return res.status(400).json({ error: 'No valid file uploaded' });
 
     const sha256_hash = sha256(req.file.buffer);
     const { data: encrypted, iv } = encrypt(req.file.buffer);
@@ -73,7 +72,7 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { data: files, error } = await supabaseAdmin
       .from('files')
-      .select('*')
+      .select('id, filename, file_size, mime_type, sha256_hash, uploaded_at')
       .eq('user_id', req.user.id);
 
     if (error) {
@@ -92,7 +91,7 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
   try {
     const { data: file, error: fetchError } = await supabaseAdmin
       .from('files')
-      .select('*')
+      .select('id, user_id, filename, file_size, mime_type, sha256_hash, s3_key')
       .eq('id', req.params.id)
       .single();
 
@@ -104,15 +103,34 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { body, metadata } = await downloadFromS3(file.s3_key);
-    const ivStr = metadata.iv || metadata.IV;
+    const { body, metadata, isStream } = await downloadFromS3(file.s3_key);
     
-    if (!ivStr) {
+    if (!metadata || !metadata.iv) {
       return res.status(500).json({ error: 'Missing encryption metadata' });
     }
 
-    const iv = Buffer.from(ivStr, 'hex');
-    const plaintext = decrypt(body, iv);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+
+    if (isStream) {
+      const decipher = createDecipher(metadata.iv);
+      body.pipe(decipher).pipe(res);
+
+      try {
+        await logEvent({
+          event: 'download',
+          user_id: req.user.id,
+          filename: file.filename,
+          file_size: file.file_size,
+          s3_key: file.s3_key
+        });
+      } catch (logErr) {
+        console.error('[files.download.logger]', logErr.message);
+      }
+      return;
+    }
+
+    const plaintext = decrypt(body, metadata.iv);
 
     const hash = sha256(plaintext);
     if (hash !== file.sha256_hash) {
@@ -147,7 +165,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { data: file, error: fetchError } = await supabaseAdmin
       .from('files')
-      .select('*')
+      .select('id, user_id, filename, s3_key')
       .eq('id', req.params.id)
       .single();
 

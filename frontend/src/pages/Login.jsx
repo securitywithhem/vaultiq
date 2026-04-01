@@ -3,11 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
-import useDocumentTitle from '../hooks/useDocumentTitle';
+
 import styles from './Auth.module.css';
 
 const Login = () => {
-  useDocumentTitle('Login | VaultIQ');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

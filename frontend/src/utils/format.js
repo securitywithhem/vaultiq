@@ -28,3 +28,15 @@ export const formatRelativeTime = (dateString) => {
   const diffInYears = Math.floor(diffInDays / 365);
   return `${diffInYears} year${diffInYears === 1 ? '' : 's'} ago`;
 };
+
+export const truncateFilename = (name, max = 30) => {
+  if (!name) return '';
+  if (name.length <= max) return name;
+  const extIndex = name.lastIndexOf('.');
+  if (extIndex !== -1 && name.length - extIndex <= 10) {
+    const ext = name.slice(extIndex);
+    const base = name.slice(0, extIndex);
+    return `${base.slice(0, max - ext.length - 3)}...${ext}`;
+  }
+  return `${name.slice(0, max - 3)}...`;
+};

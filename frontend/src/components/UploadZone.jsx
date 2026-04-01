@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import { useDropzone } from 'react-dropzone';
 import { fileService } from '../services/fileService';
 import toast from 'react-hot-toast';
-import { formatFileSize } from '../utils/formatters';
+import { formatFileSize } from '../utils/format';
 import styles from './UploadZone.module.css';
 
 const UploadZone = ({ onUploadSuccess }) => {

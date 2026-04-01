@@ -24,7 +24,7 @@ async function uploadToS3(key, buffer, mimeType, iv) {
       Key: key,
       Body: buffer,
       ContentType: mimeType || 'application/octet-stream',
-      Metadata: { iv }
+      Metadata: { iv: typeof iv === 'string' ? iv : iv.toString('hex') }
     });
     return await s3Client.send(command);
   } catch (err) {
@@ -40,13 +40,20 @@ async function downloadFromS3(key) {
       Key: key
     });
     const response = await s3Client.send(command);
+    const ivHex = response.Metadata?.iv;
+    if (!ivHex) throw new Error('IV missing from S3 metadata');
+    const iv = Buffer.from(ivHex, 'hex');
+
+    if (response.ContentLength > 10 * 1024 * 1024) {
+      return { body: response.Body, metadata: { ...response.Metadata, iv }, isStream: true };
+    }
+
     const chunks = [];
-    
     for await (const chunk of response.Body) {
-      chunks.push(chunk);
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
     
-    return { body: Buffer.concat(chunks), metadata: response.Metadata };
+    return { body: Buffer.concat(chunks), metadata: { ...response.Metadata, iv } };
   } catch (err) {
     console.error('[downloadFromS3]', err.message);
     throw err;

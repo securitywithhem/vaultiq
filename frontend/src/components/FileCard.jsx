@@ -1,7 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import HashBadge from './HashBadge';
-import { formatFileSize, formatRelativeTime } from '../utils/formatters';
+import { formatFileSize, formatRelativeTime, truncateFilename } from '../utils/format';
 import styles from './FileCard.module.css';
 
 const FileCard = ({ file, onDownload, onDelete }) => {
@@ -28,9 +28,6 @@ const FileCard = ({ file, onDownload, onDelete }) => {
     );
   };
 
-  const truncateName = (name) => {
-    return name.length > 25 ? `${name.substring(0, 22)}...` : name;
-  };
 
   const handleDelete = () => {
     if (window.confirm('Delete this file permanently?')) {
@@ -53,7 +50,7 @@ const FileCard = ({ file, onDownload, onDelete }) => {
       </div>
 
       <div className={styles.content}>
-        <h4 className={styles.filename} title={file.filename}>{truncateName(file.filename)}</h4>
+        <h4 className={styles.filename} title={file.filename}>{truncateFilename(file.filename)}</h4>
         <div className={styles.metadata}>
           <span className={styles.size}>{formatFileSize(file.file_size)}</span>
           <span className={styles.dot}>•</span>
