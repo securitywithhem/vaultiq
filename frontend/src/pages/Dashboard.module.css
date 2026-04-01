@@ -1,0 +1,71 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main {
+  flex: 1;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.badge {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--bg-border);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.skeletonCard {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-lg);
+  height: 220px;
+  animation: shimmer 2s infinite linear;
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface) 0px,
+    var(--bg-elevated) 40px,
+    var(--bg-surface) 80px
+  );
+  background-size: 600px;
+}
+
+@keyframes shimmer {
+  0% { background-position: -300px; }
+  100% { background-position: 300px; }
+}

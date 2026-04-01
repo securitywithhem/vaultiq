@@ -1,251 +1,192 @@
 /**
- * =============================================================
- * VaultIQ — File Routes
- * =============================================================
- * POST   /api/files/upload       — encrypt & upload file to S3
- * GET    /api/files               — list user's files
- * GET    /api/files/:id/download  — decrypt & download file
- * DELETE /api/files/:id           — delete file from S3 + DB
- *
- * All routes require JWT authentication.
- * Files are AES-256-CBC encrypted before S3 upload.
- * SHA-256 hash is computed on plaintext for integrity verification.
- * HDFS logging is fire-and-forget — never blocks file operations.
- * =============================================================
+ * @file files.js
+ * @description File upload, retrieval, and deletion routes
+ * @dependencies express, multer, crypto, s3, supabase, hdfsLogger, auth middleware
+ * @exports router
  */
 
 const express = require('express');
 const multer = require('multer');
-const crypto = require('crypto');
 const { authenticateToken } = require('../middleware/auth');
-const { sha256, encrypt, decrypt } = require('../utils/crypto');
+const { encrypt, decrypt, sha256 } = require('../utils/crypto');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../utils/s3');
-const getSupabase = require('../utils/supabase');
-const { logToHDFS } = require('../utils/hdfsLogger');
+const { supabaseAdmin } = require('../utils/supabase');
+const { logEvent } = require('../utils/hdfsLogger');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
-// Multer — memory storage only — NEVER write plaintext to disk
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 100 * 1024 * 1024, // 100 MB max
-  },
-});
-
-// ---------------------------------------------------------------
-// POST /api/files/upload
-// ---------------------------------------------------------------
+// Upload a new file
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    // Validate file exists
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'No valid file uploaded' });
     }
 
-    const { buffer, originalname, mimetype, size } = req.file;
-    const userId = req.user.id;
+    const sha256_hash = sha256(req.file.buffer);
+    const { data: encrypted, iv } = encrypt(req.file.buffer);
 
-    // 1. Compute SHA-256 hash of plaintext (BEFORE encryption)
-    const hash = sha256(buffer);
+    const s3Key = `${req.user.id}/${Date.now()}_${req.file.originalname}.enc`;
+    
+    await uploadToS3(s3Key, encrypted, req.file.mimetype, iv.toString('hex'));
 
-    // 2. Encrypt the buffer
-    const { encryptedBuffer, iv } = encrypt(buffer);
-
-    // 3. Generate a unique S3 key
-    const fileId = crypto.randomUUID();
-    const s3Key = `uploads/${userId}/${fileId}/${originalname}`;
-
-    // 4. Upload encrypted buffer to S3 with IV in metadata
-    await uploadToS3(s3Key, encryptedBuffer, mimetype, iv);
-
-    // 5. Insert file record into Supabase
-    const supabase = getSupabase();
-    const { data: fileRecord, error: dbError } = await supabase
+    const { data: fileRecord, error: dbError } = await supabaseAdmin
       .from('files')
       .insert({
-        id: fileId,
-        user_id: userId,
-        filename: originalname,
+        user_id: req.user.id,
+        filename: req.file.originalname,
         s3_key: s3Key,
-        file_size: size,
-        sha256_hash: hash,
-        mime_type: mimetype || 'application/octet-stream',
+        file_size: req.file.size,
+        mime_type: req.file.mimetype || 'application/octet-stream',
+        sha256_hash: sha256_hash
       })
       .select('id, filename, file_size, uploaded_at, sha256_hash')
       .single();
 
     if (dbError) {
-      // TODO: remove in prod
-      console.error('[Files] DB insert error:', dbError);
-      return res.status(500).json({ error: 'Upload failed', details: dbError.message });
+      return res.status(500).json({ error: 'Database error storing file record' });
     }
 
-    // 6. Log to HDFS (fire-and-forget — never await, never let it break the response)
-    logToHDFS('UPLOAD', {
-      user_id: userId,
-      file_id: fileId,
-      filename: originalname,
-      file_size: size,
-      sha256_hash: hash,
-    }).catch(console.error);
+    (async () => {
+      try {
+        await logEvent({
+          event: 'upload',
+          user_id: req.user.id,
+          filename: req.file.originalname,
+          file_size: req.file.size,
+          s3_key: s3Key
+        });
+      } catch (logErr) {
+        console.error('[files.upload.logger]', logErr.message);
+      }
+    })();
 
-    return res.status(201).json({ file: fileRecord });
+    return res.status(201).json({ data: { file: fileRecord } });
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Files] Upload crash:', err);
-    return res.status(500).json({ error: 'Upload failed', details: err.message });
+    console.error('[files.upload]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ---------------------------------------------------------------
-// GET /api/files
-// ---------------------------------------------------------------
+// Retrieve user's file list
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const supabase = getSupabase();
-
-    const { data: files, error } = await supabase
+    const { data: files, error } = await supabaseAdmin
       .from('files')
-      .select('id, filename, file_size, mime_type, uploaded_at, sha256_hash')
-      .eq('user_id', userId)
-      .order('uploaded_at', { ascending: false });
+      .select('*')
+      .eq('user_id', req.user.id);
 
     if (error) {
-      // TODO: remove in prod
-      console.error('[Files] List error:', error);
       return res.status(500).json({ error: 'Failed to fetch files' });
     }
 
-    return res.status(200).json({ files: files || [] });
+    return res.status(200).json({ data: { files: files || [] } });
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Files] List crash:', err);
-    return res.status(500).json({ error: 'Failed to fetch files' });
+    console.error('[files.list]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ---------------------------------------------------------------
-// GET /api/files/:id/download
-// ---------------------------------------------------------------
+// Download user's file
 router.get('/:id/download', authenticateToken, async (req, res) => {
   try {
-    const fileId = req.params.id;
-    const userId = req.user.id;
-    const supabase = getSupabase();
-
-    // 1. Fetch file record from Supabase
-    const { data: file, error: fetchError } = await supabase
+    const { data: file, error: fetchError } = await supabaseAdmin
       .from('files')
       .select('*')
-      .eq('id', fileId)
+      .eq('id', req.params.id)
       .single();
 
     if (fetchError || !file) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // 2. Verify ownership
-    if (file.user_id !== userId) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (file.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 3. Download encrypted buffer + IV from S3
-    const { buffer: encryptedBuffer, iv } = await downloadFromS3(file.s3_key);
-
-    if (!iv) {
-      return res.status(500).json({ error: 'Missing encryption metadata — cannot decrypt' });
+    const { body, metadata } = await downloadFromS3(file.s3_key);
+    const ivStr = metadata.iv || metadata.IV;
+    
+    if (!ivStr) {
+      return res.status(500).json({ error: 'Missing encryption metadata' });
     }
 
-    // 4. Decrypt the buffer
-    const decryptedBuffer = decrypt(encryptedBuffer, iv);
+    const iv = Buffer.from(ivStr, 'hex');
+    const plaintext = decrypt(body, iv);
 
-    // 5. Integrity check — re-compute SHA-256 and compare
-    const downloadHash = sha256(decryptedBuffer);
-    if (downloadHash !== file.sha256_hash) {
-      // TODO: remove in prod
-      console.error(`[Files] Integrity mismatch for file ${fileId}: stored=${file.sha256_hash}, computed=${downloadHash}`);
-      return res.status(409).json({
-        error: 'Integrity check failed — file may be corrupted or tampered',
-      });
+    const hash = sha256(plaintext);
+    if (hash !== file.sha256_hash) {
+      return res.status(409).json({ error: 'Integrity check failed' });
     }
 
-    // 6. Log download event to HDFS (fire-and-forget)
-    logToHDFS('DOWNLOAD', {
-      user_id: userId,
-      file_id: fileId,
-      filename: file.filename,
-      file_size: file.file_size,
-    }).catch(console.error);
+    (async () => {
+      try {
+        await logEvent({
+          event: 'download',
+          user_id: req.user.id,
+          filename: file.filename,
+          file_size: file.file_size,
+          s3_key: file.s3_key
+        });
+      } catch (logErr) {
+        console.error('[files.download.logger]', logErr.message);
+      }
+    })();
 
-    // 7. Send the decrypted file
-    res.set({
-      'Content-Type': file.mime_type || 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(file.filename)}"`,
-      'Content-Length': decryptedBuffer.length,
-    });
-
-    return res.send(decryptedBuffer);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+    res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+    return res.send(plaintext);
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Files] Download crash:', err);
-    return res.status(500).json({ error: 'Download failed', details: err.message });
+    console.error('[files.download]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ---------------------------------------------------------------
-// DELETE /api/files/:id
-// ---------------------------------------------------------------
+// Delete user's file
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
-    const fileId = req.params.id;
-    const userId = req.user.id;
-    const supabase = getSupabase();
-
-    // 1. Fetch file record
-    const { data: file, error: fetchError } = await supabase
+    const { data: file, error: fetchError } = await supabaseAdmin
       .from('files')
       .select('*')
-      .eq('id', fileId)
+      .eq('id', req.params.id)
       .single();
 
     if (fetchError || !file) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // 2. Verify ownership
-    if (file.user_id !== userId) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (file.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // 3. Delete from S3
     await deleteFromS3(file.s3_key);
 
-    // 4. Delete record from Supabase
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from('files')
       .delete()
-      .eq('id', fileId);
+      .eq('id', req.params.id);
 
     if (deleteError) {
-      // TODO: remove in prod
-      console.error('[Files] DB delete error:', deleteError);
-      return res.status(500).json({ error: 'Failed to delete file record' });
+      return res.status(500).json({ error: 'Failed to delete file records' });
     }
 
-    // 5. Log delete event to HDFS (fire-and-forget)
-    logToHDFS('DELETE', {
-      user_id: userId,
-      file_id: fileId,
-      filename: file.filename,
-    }).catch(console.error);
+    (async () => {
+      try {
+        await logEvent({
+          event: 'delete',
+          user_id: req.user.id,
+          filename: file.filename,
+          s3_key: file.s3_key
+        });
+      } catch (logErr) {
+        console.error('[files.delete.logger]', logErr.message);
+      }
+    })();
 
     return res.status(200).json({ message: 'File deleted' });
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Files] Delete crash:', err);
-    return res.status(500).json({ error: 'Delete failed', details: err.message });
+    console.error('[files.delete]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

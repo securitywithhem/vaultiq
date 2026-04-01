@@ -1,120 +1,110 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { login } from '../services/auth';
+import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
+import LoadingSpinner from '../components/LoadingSpinner';
+import useDocumentTitle from '../hooks/useDocumentTitle';
+import styles from './Auth.module.css';
 
-export default function Login() {
+const Login = () => {
+  useDocumentTitle('Login | VaultIQ');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login } = useAuth();
   const navigate = useNavigate();
 
-  async function handleSubmit(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!email || !password) return;
 
-    if (!email || !password) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    setLoading(true);
+    setIsSubmitting(true);
     try {
       await login(email, password);
-      toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (err) {
-      // TODO: remove in prod
-      console.log('Login error:', err);
-      const message =
-        err.response?.data?.error ||
-        err.response?.data?.message ||
-        'Login failed. Please check your credentials.';
-      toast.error(message);
-    } finally {
-      setLoading(false);
+      toast.error('Invalid email or password');
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        {/* Brand */}
-        <div className="auth-brand">
-          <div className="auth-logo">
-            <svg width="36" height="36" viewBox="0 0 28 28" fill="none">
-              <rect width="28" height="28" rx="6" fill="var(--primary)" />
-              <path
-                d="M14 6L8 10V15C8 19.42 10.56 23.43 14 24.5C17.44 23.43 20 19.42 20 15V10L14 6Z"
-                fill="white"
-                opacity="0.9"
-              />
-              <path
-                d="M13 15.17L11.41 13.59L10 15L13 18L19 12L17.59 10.59L13 15.17Z"
-                fill="var(--primary)"
-              />
+    <div className={styles.container}>
+      <div className={styles.leftPanel}>
+        <div className={styles.brandDisplay}>
+          <div className={styles.lockAnimation}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h1 className="auth-title">VaultIQ</h1>
-          <p className="auth-subtitle">Sign in to your secure vault</p>
+          <h1>VaultIQ</h1>
+          <p>Your files. Encrypted. Yours alone.</p>
         </div>
+      </div>
 
-        {/* Form */}
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="login-email" className="form-label">
-              Email
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              className="form-input"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </div>
+      <div className={styles.rightPanel}>
+        <div className={styles.formContainer}>
+          <h2>Welcome Back</h2>
+          <p className={styles.subtitle}>Sign in to access your secure vault.</p>
 
-          <div className="form-group">
-            <label htmlFor="login-password" className="form-label">
-              Password
-            </label>
-            <input
-              id="login-password"
-              type="password"
-              className="form-input"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
+          <form onSubmit={handleSubmit} className={styles.form}>
+            <div className={styles.inputGroup}>
+              <label htmlFor="email">Email address</label>
+              <input 
+                id="email"
+                type="email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                required
+              />
+            </div>
 
-          <button
-            type="submit"
-            className="btn btn--primary btn--full"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <span className="spinner" />
-                Signing in…
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </button>
-        </form>
+            <div className={styles.inputGroup}>
+              <label htmlFor="password">Password</label>
+              <div className={styles.passwordInput}>
+                <input 
+                  id="password"
+                  type={showPassword ? 'text' : 'password'} 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+                <button 
+                  type="button" 
+                  className={styles.togglePwd}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
 
-        <p className="auth-footer">
-          Don't have an account?{' '}
-          <Link to="/register" className="auth-link">
-            Create one
-          </Link>
-        </p>
+            <button 
+              type="submit" 
+              className={styles.submitBtn} 
+              disabled={isSubmitting || !email || !password}
+            >
+              {isSubmitting ? (
+                <span className={styles.btnInner}>
+                  <LoadingSpinner size="sm" /> 
+                  Signing in...
+                </span>
+              ) : (
+                'Sign In'
+              )}
+            </button>
+          </form>
+
+          <p className={styles.footerLink}>
+            Need an account? <Link to="/register">Create one now</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
-}
+};
+
+export default Login;

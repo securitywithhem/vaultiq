@@ -1,0 +1,133 @@
+.card {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  transition: var(--transition);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  border-color: var(--text-muted);
+  box-shadow: var(--shadow-elevated);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.iconContainer {
+  width: 44px;
+  height: 44px;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bg-border);
+}
+
+.iconRed { width: 24px; height: 24px; color: var(--accent-red); }
+.iconYellow { width: 24px; height: 24px; color: var(--accent-amber); }
+.iconBlue { width: 24px; height: 24px; color: var(--accent-blue); }
+
+.secureBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--accent-green);
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.lockIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.filename {
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.metadata {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin-bottom: 16px;
+}
+
+.size { font-family: var(--font-mono); }
+.dot { font-size: 0.6rem; }
+
+.hashSection {
+  margin-top: auto;
+  margin-bottom: 20px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--bg-border);
+  padding-top: 16px;
+  margin-top: auto;
+}
+
+.downloadBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 0;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.downloadBtn:hover {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.deleteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+
+.deleteBtn:hover {
+  color: var(--accent-red);
+  border-color: rgba(239, 68, 68, 0.3);
+  background-color: rgba(239, 68, 68, 0.1);
+}

@@ -1,72 +1,57 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
+import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
 import PlagiarismChecker from './pages/PlagiarismChecker';
-import ProtectedRoute from './components/ProtectedRoute';
 
-export default function App() {
+const App = () => {
   return (
-    <BrowserRouter>
-      <Toaster
-        position="top-right"
+    <>
+      <Toaster 
+        position="top-right" 
         toastOptions={{
-          duration: 4000,
           style: {
-            background: 'var(--surface)',
-            color: 'var(--text)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-            boxShadow: '0 4px 16px rgba(92,78,229,0.10)',
-            fontSize: '14px',
+            background: '#1F2937',
+            color: '#F9FAFB',
+            border: '1px solid #374151',
           },
           success: {
-            iconTheme: { primary: 'var(--success)', secondary: 'white' },
+            iconTheme: {
+              primary: '#10B981',
+              secondary: '#1F2937',
+            },
           },
           error: {
-            iconTheme: { primary: 'var(--danger)', secondary: 'white' },
+            iconTheme: {
+              primary: '#EF4444',
+              secondary: '#1F2937',
+            },
           },
         }}
       />
       <Routes>
-        {/* Public routes */}
+        {/* Public Routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* Protected routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/analytics"
-          element={
-            <ProtectedRoute>
-              <Analytics />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/plagiarism"
-          element={
-            <ProtectedRoute>
-              <PlagiarismChecker />
-            </ProtectedRoute>
-          }
-        />
+        {/* Protected Routes */}
+        <Route path="/" element={<ProtectedRoute />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="plagiarism" element={<PlagiarismChecker />} />
+        </Route>
 
-        {/* Redirect root to dashboard */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-    </BrowserRouter>
+    </>
   );
-}
+};
+
+export default App;

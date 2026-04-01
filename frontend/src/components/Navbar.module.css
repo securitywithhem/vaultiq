@@ -1,0 +1,140 @@
+.navbar {
+  background-color: rgba(10, 15, 30, 0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--bg-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+}
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logoContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logoIcon {
+  width: 28px;
+  height: 28px;
+  color: var(--accent-blue);
+}
+
+.logoText {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+}
+
+.desktopLinks {
+  display: none;
+  align-items: center;
+  gap: 32px;
+}
+
+.link {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 8px 0;
+  border-bottom: 2px solid transparent;
+}
+
+.link:hover {
+  color: var(--text-primary);
+}
+
+.activeLink {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-blue);
+}
+
+.desktopUser {
+  display: none;
+  align-items: center;
+  gap: 24px;
+}
+
+.userEmail {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.logoutBtn {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 6px 16px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+}
+
+.logoutBtn:hover {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.mobileMenuBtn {
+  display: flex;
+  color: var(--text-secondary);
+  padding: 4px;
+}
+
+.menuIcon {
+  width: 24px;
+  height: 24px;
+}
+
+.mobileMenu {
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--bg-border);
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mobileLink {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 8px 0;
+}
+
+.mobileUserSection {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--bg-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mobileUserEmail {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.mobileLogoutBtn {
+  color: var(--accent-red);
+  text-align: left;
+  font-weight: 500;
+  padding: 8px 0;
+}
+
+@media (min-width: 768px) {
+  .desktopLinks, .desktopUser { display: flex; }
+  .mobileMenuBtn, .mobileMenu { display: none; }
+}

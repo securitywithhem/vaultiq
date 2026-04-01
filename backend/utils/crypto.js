@@ -1,77 +1,59 @@
 /**
- * =============================================================
- * VaultIQ — Cryptography Utilities
- * =============================================================
- * AES-256-CBC encryption/decryption with random IV per file.
- * SHA-256 hashing for integrity verification.
- *
- * Flow:
- *   Upload:  plaintext → sha256(plaintext) → encrypt(plaintext) → store ciphertext + IV
- *   Download: fetch ciphertext + IV → decrypt → sha256(decrypted) → compare hash
- * =============================================================
+ * @file crypto.js
+ * @description Cryptography logic (AES-256-CBC, SHA-256)
+ * @dependencies crypto
+ * @exports encrypt, decrypt, sha256
  */
 
 const crypto = require('crypto');
 
-const ALGORITHM = 'aes-256-cbc';
-const IV_LENGTH = 16; // AES block size
+const ALGO = 'aes-256-cbc';
+const keyHex = process.env.ENCRYPTION_KEY || '';
 
-/**
- * Get the 32-byte encryption key from the env variable (64 hex chars).
- * @returns {Buffer} 32-byte key
- */
-function getEncryptionKey() {
-  const keyHex = process.env.ENCRYPTION_KEY;
-  if (!keyHex || keyHex.length !== 64) {
-    throw new Error(
-      'ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes). ' +
-      'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
-    );
+if (keyHex.length !== 64) {
+  throw new Error('ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+}
+
+const KEY = Buffer.from(keyHex, 'hex');
+
+function encrypt(buffer) {
+  try {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ALGO, KEY, iv);
+    const data = Buffer.concat([cipher.update(buffer), cipher.final()]);
+    
+    return { data, iv };
+  } catch (err) {
+    console.error('[crypto.encrypt]', err.message);
+    throw new Error('Failed to encrypt block');
   }
-  return Buffer.from(keyHex, 'hex');
 }
 
-/**
- * Compute SHA-256 hash of a buffer.
- * @param {Buffer} buffer - Data to hash
- * @returns {string} Hex-encoded SHA-256 digest
- */
+function decrypt(encryptedBuffer, iv) {
+  try {
+    if (typeof iv === 'string') {
+      iv = Buffer.from(iv, 'hex');
+    }
+    
+    const decipher = crypto.createDecipheriv(ALGO, KEY, iv);
+    return Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
+  } catch (err) {
+    console.error('[crypto.decrypt]', err.message);
+    throw new Error('Failed to decrypt block (verify key validity)');
+  }
+}
+
 function sha256(buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex');
+  try {
+    return crypto.createHash('sha256').update(buffer).digest('hex');
+  } catch (err) {
+    console.error('[crypto.sha256]', err.message);
+    throw new Error('Failed to compute hash');
+  }
 }
 
-/**
- * Encrypt a buffer with AES-256-CBC using a fresh random IV.
- * @param {Buffer} plainBuffer - Raw file data
- * @returns {{ encryptedBuffer: Buffer, iv: string }} Ciphertext + IV (hex string)
- */
-function encrypt(plainBuffer) {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(IV_LENGTH);
-
-  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  const encrypted = Buffer.concat([cipher.update(plainBuffer), cipher.final()]);
-
-  return {
-    encryptedBuffer: encrypted,
-    iv: iv.toString('hex'),
-  };
-}
-
-/**
- * Decrypt a buffer with AES-256-CBC.
- * @param {Buffer} encryptedBuffer - Ciphertext
- * @param {string} ivHex - Initialization vector as hex string
- * @returns {Buffer} Decrypted plaintext buffer
- */
-function decrypt(encryptedBuffer, ivHex) {
-  const key = getEncryptionKey();
-  const iv = Buffer.from(ivHex, 'hex');
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  const decrypted = Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
-
-  return decrypted;
-}
-
-module.exports = { sha256, encrypt, decrypt };
+module.exports = {
+  encrypt,
+  decrypt,
+  sha256
+};

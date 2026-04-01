@@ -33,3 +33,4 @@ yarn-error.log*
 # Project specific
 backend/logs/
 backend/uploads/
+frontend/output.txt

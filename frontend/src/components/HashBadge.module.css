@@ -1,0 +1,52 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.container:hover {
+  border-color: var(--text-muted);
+  background-color: var(--bg-elevated);
+}
+
+.typewriterWrapper {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: typewriter 1.5s steps(20, end);
+}
+
+.hashText {
+  color: var(--accent-blue);
+  letter-spacing: 0.5px;
+}
+
+.copyBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  color: var(--text-muted);
+  padding: 2px;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+}
+
+.iconSuccess {
+  width: 14px;
+  height: 14px;
+  color: var(--accent-green);
+}
+
+.container:hover .icon {
+  color: var(--text-primary);
+}

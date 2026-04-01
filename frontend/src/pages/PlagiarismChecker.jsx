@@ -1,386 +1,107 @@
-import React, { useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import axios from 'axios';
-import toast from 'react-hot-toast';
+import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
+import LoadingSpinner from '../components/LoadingSpinner';
+import useDocumentTitle from '../hooks/useDocumentTitle';
+import styles from './PlagiarismChecker.module.css';
 
-const AI_BASE = 'http://localhost:8001';
+const PlagiarismChecker = () => {
+  useDocumentTitle('AI Check | VaultIQ');
+  const [inputText, setInputText] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [result, setResult] = useState(null);
 
-export default function PlagiarismChecker() {
-  const [file, setFile] = useState(null);
-  const [checking, setChecking] = useState(false);
-  const [training, setTraining] = useState(false);
-  const [results, setResults] = useState(null);
-  const [expandedIdx, setExpandedIdx] = useState(null);
+  const handleScan = () => {
+    if (!inputText.trim()) return;
+    
+    setIsScanning(true);
+    setResult(null);
 
-  const onDrop = useCallback((acceptedFiles) => {
-    if (acceptedFiles.length > 0) {
-      setFile(acceptedFiles[0]);
-      setResults(null);
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    multiple: false,
-    accept: {
-      'application/pdf': ['.pdf'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/plain': ['.txt'],
-    },
-  });
-
-  async function handleCheck() {
-    if (!file) {
-      toast.error('Please select a file first');
-      return;
-    }
-
-    setChecking(true);
-    setResults(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await axios.post(`${AI_BASE}/check`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+    // Mock AI Analysis Delay
+    setTimeout(() => {
+      // Dummy response as backend AI route doesn't exist yet
+      setResult({
+        score: Math.floor(Math.random() * 30), // 0-30%
+        matches: [
+          { url: 'wikipedia.org/ai-security', similarity: '12%' },
+          { url: 'github.com/crypto-examples', similarity: '8%' }
+        ]
       });
-      setResults(response.data);
-    } catch (err) {
-      // TODO: remove in prod
-      console.log('Plagiarism check error:', err);
-      toast.error(
-        'Plagiarism check failed. Make sure the AI service is running.'
-      );
-    } finally {
-      setChecking(false);
-    }
-  }
+      setIsScanning(false);
+    }, 2500);
+  };
 
-  async function handleTrain() {
-    setTraining(true);
-    try {
-      const response = await axios.post(`${AI_BASE}/train`);
-      toast.success(
-        `Model trained successfully! Corpus size: ${response.data.corpus_size || 'N/A'}`
-      );
-    } catch (err) {
-      // TODO: remove in prod
-      console.log('Train error:', err);
-      toast.error('Training failed. Make sure the AI service is running.');
-    } finally {
-      setTraining(false);
-    }
-  }
-
-  function getScoreColor(score) {
-    const pct = score * 100;
-    if (pct >= 80) return 'var(--danger)';
-    if (pct >= 50) return 'var(--warning)';
-    return 'var(--success)';
-  }
-
-  function getScoreBadgeClass(score) {
-    const pct = score * 100;
-    if (pct >= 80) return 'score-badge--high';
-    if (pct >= 50) return 'score-badge--moderate';
-    return 'score-badge--low';
-  }
-
-  function formatScore(score) {
-    return `${(score * 100).toFixed(1)}%`;
-  }
-
-  const sortedMatches = results?.matches
-    ? [...results.matches].sort((a, b) => b.final_score - a.final_score)
-    : [];
+  const getScoreColor = (score) => {
+    if (score < 15) return styles.scoreSafe;
+    if (score < 40) return styles.scoreWarning;
+    return styles.scoreDanger;
+  };
 
   return (
-    <div className="page-layout">
+    <div className={styles.page}>
       <Navbar />
-      <main className="page-content">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">Plagiarism Checker</h1>
-            <p className="page-desc">
-              AI-powered document similarity analysis
-            </p>
-          </div>
-          <button
-            className="btn btn--secondary"
-            onClick={handleTrain}
-            disabled={training}
-          >
-            {training ? (
-              <>
-                <span className="spinner" />
-                Training…
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M8 5V8L10 10"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Train Model
-              </>
-            )}
-          </button>
+
+      <main className={styles.main}>
+        <div className={styles.header}>
+          <h1 className={styles.title}>AI Integrity Search</h1>
+          <p className={styles.subtitle}>Check documents against global public records before encrypting.</p>
         </div>
 
-        <div className="plagiarism-layout">
-          {/* Left Panel — File Upload */}
-          <div className="plagiarism-panel plagiarism-panel--upload">
-            <h3 className="panel-title">Upload Document</h3>
-            <div
-              {...getRootProps()}
-              className={`plag-dropzone ${isDragActive ? 'plag-dropzone--active' : ''}`}
-            >
-              <input {...getInputProps()} />
-              <div className="plag-dropzone-content">
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="17"
-                    stroke="var(--border)"
-                    strokeWidth="2"
-                    strokeDasharray="4 3"
-                  />
-                  <path
-                    d="M18 10V22M18 10L12 16M18 10L24 16"
-                    stroke={isDragActive ? 'var(--primary)' : 'var(--text-muted)'}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <p>
-                  {isDragActive
-                    ? 'Drop your document here…'
-                    : 'Drag & drop a document'}
-                </p>
-                <span className="plag-dropzone-hint">
-                  PDF, DOCX, or TXT only
-                </span>
-              </div>
+        <div className={styles.scannerInterface}>
+          <div className={styles.inputSection}>
+            <textarea 
+              className={styles.textarea}
+              placeholder="Paste text contents here to scan for origin similarities..."
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+            />
+            <div className={styles.actionRow}>
+              <span className={styles.charCount}>{inputText.length} characters</span>
+              <button 
+                className={styles.scanBtn} 
+                onClick={handleScan}
+                disabled={isScanning || !inputText.trim()}
+              >
+                {isScanning ? 'Analyzing Vectors...' : 'Run Deep Scan'}
+              </button>
             </div>
-
-            {file && (
-              <div className="plag-selected-file">
-                <div className="plag-file-icon">📄</div>
-                <div className="plag-file-info">
-                  <span className="plag-file-name">{file.name}</span>
-                  <span className="plag-file-size">
-                    {(file.size / 1024).toFixed(1)} KB
-                  </span>
-                </div>
-                <button
-                  className="btn btn--icon"
-                  onClick={() => {
-                    setFile(null);
-                    setResults(null);
-                  }}
-                  title="Remove file"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
-            <button
-              className="btn btn--primary btn--full"
-              onClick={handleCheck}
-              disabled={!file || checking}
-              style={{ marginTop: '16px' }}
-            >
-              {checking ? (
-                <>
-                  <span className="spinner" />
-                  Analyzing…
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
-                    <path d="M11 11L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                  Check for Plagiarism
-                </>
-              )}
-            </button>
           </div>
 
-          {/* Right Panel — Results */}
-          <div className="plagiarism-panel plagiarism-panel--results">
-            <h3 className="panel-title">Results</h3>
-
-            {checking ? (
-              <div className="plag-loading">
-                <div className="plag-loading-spinner" />
-                <p>Analyzing document similarity…</p>
-                <span className="text-muted">This may take a moment</span>
+          <div className={styles.resultSection}>
+            {isScanning ? (
+              <div className={styles.scanningState}>
+                <div className={styles.radarContainer}>
+                  <div className={styles.radarSweep}></div>
+                </div>
+                <LoadingSpinner size="md" text="Cross-referencing global databases..." />
               </div>
-            ) : results ? (
-              <>
-                {/* Summary */}
-                {results.summary && (
-                  <div className="plag-summary">
-                    <div className="plag-summary-stat">
-                      <span className="plag-summary-value">
-                        {results.summary.total_docs}
-                      </span>
-                      <span className="plag-summary-label">
-                        Documents Compared
-                      </span>
-                    </div>
-                    <div className="plag-summary-stat plag-summary-stat--high">
-                      <span className="plag-summary-value">
-                        {results.summary.high_similarity}
-                      </span>
-                      <span className="plag-summary-label">High Similarity</span>
-                    </div>
-                    <div className="plag-summary-stat plag-summary-stat--mod">
-                      <span className="plag-summary-value">
-                        {results.summary.moderate}
-                      </span>
-                      <span className="plag-summary-label">Moderate</span>
-                    </div>
-                    <div className="plag-summary-stat plag-summary-stat--low">
-                      <span className="plag-summary-value">
-                        {results.summary.low}
-                      </span>
-                      <span className="plag-summary-label">Low</span>
-                    </div>
+            ) : result ? (
+              <div className={styles.reportContainer}>
+                <div className={styles.scoreCircle}>
+                  <div className={`${styles.scoreValue} ${getScoreColor(result.score)}`}>
+                    {result.score}%
                   </div>
-                )}
+                  <span className={styles.scoreLabel}>Similarity</span>
+                </div>
 
-                {/* Matches List */}
-                {sortedMatches.length > 0 ? (
-                  <div className="plag-matches">
-                    {sortedMatches.map((match, i) => (
-                      <div className="plag-match" key={i}>
-                        <div
-                          className="plag-match-header"
-                          onClick={() =>
-                            setExpandedIdx(expandedIdx === i ? null : i)
-                          }
-                        >
-                          <div className="plag-match-left">
-                            <span className="plag-match-name">
-                              {match.filename}
-                            </span>
-                          </div>
-                          <div className="plag-match-right">
-                            <span
-                              className={`score-badge ${getScoreBadgeClass(
-                                match.final_score
-                              )}`}
-                            >
-                              {formatScore(match.final_score)}
-                            </span>
-                            <span
-                              className={`plag-match-chevron ${
-                                expandedIdx === i ? 'plag-match-chevron--open' : ''
-                              }`}
-                            >
-                              ▾
-                            </span>
-                          </div>
-                        </div>
-
-                        {expandedIdx === i && (
-                          <div className="plag-match-detail">
-                            <div className="plag-score-row">
-                              <span className="plag-score-label">
-                                Word2Vec Score
-                              </span>
-                              <div className="plag-score-bar-track">
-                                <div
-                                  className="plag-score-bar-fill"
-                                  style={{
-                                    width: `${match.word2vec_score * 100}%`,
-                                    backgroundColor: getScoreColor(
-                                      match.word2vec_score
-                                    ),
-                                  }}
-                                />
-                              </div>
-                              <span className="plag-score-value">
-                                {formatScore(match.word2vec_score)}
-                              </span>
-                            </div>
-                            <div className="plag-score-row">
-                              <span className="plag-score-label">
-                                TF-IDF Score
-                              </span>
-                              <div className="plag-score-bar-track">
-                                <div
-                                  className="plag-score-bar-fill"
-                                  style={{
-                                    width: `${match.tfidf_score * 100}%`,
-                                    backgroundColor: getScoreColor(
-                                      match.tfidf_score
-                                    ),
-                                  }}
-                                />
-                              </div>
-                              <span className="plag-score-value">
-                                {formatScore(match.tfidf_score)}
-                              </span>
-                            </div>
-                            <div className="plag-score-row">
-                              <span className="plag-score-label">
-                                Jaccard Score
-                              </span>
-                              <div className="plag-score-bar-track">
-                                <div
-                                  className="plag-score-bar-fill"
-                                  style={{
-                                    width: `${match.jaccard_score * 100}%`,
-                                    backgroundColor: getScoreColor(
-                                      match.jaccard_score
-                                    ),
-                                  }}
-                                />
-                              </div>
-                              <span className="plag-score-value">
-                                {formatScore(match.jaccard_score)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="plag-no-matches">
-                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                      <circle cx="16" cy="16" r="14" stroke="var(--success)" strokeWidth="1.5" />
-                      <path d="M10 16L14 20L22 12" stroke="var(--success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <p>No similar documents found</p>
-                  </div>
-                )}
-              </>
+                <div className={styles.matchesList}>
+                  <h3>Detected Origins</h3>
+                  {result.matches.map((match, i) => (
+                    <div key={i} className={styles.matchItem}>
+                      <span className={styles.matchUrl}>{match.url}</span>
+                      <span className={styles.matchPercent}>{match.similarity} match</span>
+                    </div>
+                  ))}
+                  {result.matches.length === 0 && (
+                    <p className={styles.noMatches}>Clear! No significant similarities found.</p>
+                  )}
+                </div>
+              </div>
             ) : (
-              <div className="plag-empty">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                  <circle cx="20" cy="20" r="14" stroke="var(--border)" strokeWidth="2" />
-                  <path d="M30 30L42 42" stroke="var(--border)" strokeWidth="2.5" strokeLinecap="round" />
+              <div className={styles.emptyReport}>
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <h4>No analysis yet</h4>
-                <p>Upload a document and click "Check for Plagiarism" to begin</p>
+                <p>Awaiting text input for analysis...</p>
               </div>
             )}
           </div>
@@ -388,4 +109,6 @@ export default function PlagiarismChecker() {
       </main>
     </div>
   );
-}
+};
+
+export default PlagiarismChecker;

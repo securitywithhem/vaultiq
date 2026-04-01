@@ -1,0 +1,203 @@
+.container {
+  width: 100%;
+  min-height: 200px;
+  border: 2px dashed var(--bg-border);
+  border-radius: var(--radius-lg);
+  background-color: rgba(31, 41, 55, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  cursor: pointer;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+.container:hover {
+  border-color: var(--text-muted);
+  background-color: rgba(31, 41, 55, 0.6);
+}
+
+.dragActive {
+  border-color: var(--accent-blue);
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.complete {
+  border-color: var(--accent-green);
+  border-style: solid;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.iconWrapper {
+  width: 64px;
+  height: 64px;
+  background-color: var(--bg-elevated);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  transition: var(--transition);
+}
+
+.dragActive .iconWrapper {
+  background-color: var(--accent-blue);
+}
+
+.iconPulse {
+  animation: pulseGlow 1.5s infinite;
+}
+
+.uploadIcon {
+  width: 32px;
+  height: 32px;
+  color: var(--text-secondary);
+  transition: var(--transition);
+}
+
+.dragActive .uploadIcon {
+  color: #fff;
+}
+
+.title {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.fileState {
+  width: 100%;
+  max-width: 480px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  cursor: default;
+}
+
+.fileInfo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.fileIcon {
+  width: 48px;
+  height: 48px;
+  background-color: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fileIcon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.fileDetails {
+  flex: 1;
+  overflow: hidden;
+}
+
+.fileName {
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.fileSize {
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.progressContainer {
+  margin-top: 16px;
+}
+
+.progressBar {
+  height: 6px;
+  background-color: var(--bg-elevated);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progressFill {
+  height: 100%;
+  background-color: var(--accent-blue);
+  transition: width 0.3s ease;
+}
+
+.progressText {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.successState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--accent-green);
+  font-weight: 500;
+  padding: 8px 0;
+}
+
+.successIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background-color: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.cancelBtn:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-elevated);
+}
+
+.uploadBtn {
+  padding: 8px 24px;
+  font-weight: 500;
+  color: #fff;
+  background-color: var(--accent-blue);
+  border-radius: var(--radius-sm);
+}
+
+.uploadBtn:hover {
+  background-color: var(--accent-blue-hover);
+}

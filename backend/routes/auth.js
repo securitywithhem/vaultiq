@@ -1,67 +1,43 @@
 /**
- * =============================================================
- * VaultIQ — Auth Routes
- * =============================================================
- * POST /api/auth/register — create account, return JWT
- * POST /api/auth/login    — authenticate, return JWT
- * GET  /api/auth/me       — return current user from token
- *
- * Uses Supabase Auth for user management (signUp / signInWithPassword)
- * and mints our own JWT so the frontend uses a single token format.
- * =============================================================
+ * @file auth.js
+ * @description Authentication routes (register, login, me)
+ * @dependencies express, jsonwebtoken, supabase, auth middleware
+ * @exports router
  */
 
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const getSupabase = require('../utils/supabase');
+const { supabaseAuth } = require('../utils/supabase');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-const JWT_EXPIRY = '7d';
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/**
- * Generate a signed JWT for the given user.
- */
-function signToken(user) {
-  return jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName || user.full_name || '',
-    },
-    process.env.JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: JWT_EXPIRY }
-  );
-}
-
-// ---------------------------------------------------------------
-// POST /api/auth/register
-// ---------------------------------------------------------------
+// Register a new user
 router.post('/register', async (req, res) => {
   try {
     const { email, password, fullName } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required' });
+    }
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+    if (!fullName || typeof fullName !== 'string') {
+      return res.status(400).json({ error: 'Full name is required' });
     }
 
-    const supabase = getSupabase();
-
-    // 1. Create user in Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    const { data: authData, error: authError } = await supabaseAuth.auth.signUp({
       email,
       password,
-      email_confirm: true, // auto-confirm for dev
-      user_metadata: { full_name: fullName || '' },
+      options: { data: { full_name: fullName } }
     });
 
     if (authError) {
-      // TODO: remove in prod
-      console.log('[Auth] Register error:', authError.message);
-
-      if (authError.message?.toLowerCase().includes('already')) {
-        return res.status(400).json({ error: 'Email already registered' });
+      if (authError.message.includes('already registered')) {
+        return res.status(400).json({ error: 'Email already exists' });
       }
       return res.status(400).json({ error: authError.message });
     }
@@ -69,39 +45,19 @@ router.post('/register', async (req, res) => {
     const user = {
       id: authData.user.id,
       email: authData.user.email,
-      fullName: fullName || '',
+      fullName: fullName
     };
 
-    // 2. Optionally insert into a "profiles" table
-    try {
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          email: user.email,
-          full_name: user.fullName,
-          created_at: new Date().toISOString(),
-        });
-    } catch (profileErr) {
-      // Non-critical — profiles table may not exist yet
-      // TODO: remove in prod
-      console.log('[Auth] Profile insert skipped:', profileErr.message);
-    }
+    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    // 3. Sign JWT
-    const token = signToken(user);
-
-    return res.status(201).json({ user, token });
+    return res.status(201).json({ data: { user, token } });
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Auth] Register crash:', err);
-    return res.status(500).json({ error: 'Registration failed', details: err.message });
+    console.error('[auth.register]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ---------------------------------------------------------------
-// POST /api/auth/login
-// ---------------------------------------------------------------
+// Log in existing user
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -110,53 +66,44 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const supabase = getSupabase();
-
-    // Authenticate with Supabase
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
       email,
-      password,
+      password
     });
 
-    if (error) {
-      // TODO: remove in prod
-      console.log('[Auth] Login error:', error.message);
+    if (authError) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const user = {
-      id: data.user.id,
-      email: data.user.email,
+      id: authData.user.id,
+      email: authData.user.email
     };
 
-    const token = signToken(user);
+    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    return res.status(200).json({ user, token });
+    return res.status(200).json({ data: { user, token } });
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Auth] Login crash:', err);
-    return res.status(500).json({ error: 'Login failed', details: err.message });
+    console.error('[auth.login]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// ---------------------------------------------------------------
-// GET /api/auth/me
-// ---------------------------------------------------------------
+// Retrieve current user
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const user = {
-      id: req.user.id,
-      email: req.user.email,
-      created_at: req.user.iat
-        ? new Date(req.user.iat * 1000).toISOString()
-        : null,
-    };
-
-    return res.status(200).json({ user });
+    return res.status(200).json({
+      data: {
+        user: {
+          id: req.user.id,
+          email: req.user.email,
+          created_at: new Date().toISOString()
+        }
+      }
+    });
   } catch (err) {
-    // TODO: remove in prod
-    console.error('[Auth] /me crash:', err);
-    return res.status(500).json({ error: 'Failed to get user info' });
+    console.error('[auth.me]', err.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

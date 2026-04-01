@@ -1,157 +1,106 @@
-import React, { useState } from 'react';
-import api from '../services/api';
-import toast from 'react-hot-toast';
+import React from 'react';
+import PropTypes from 'prop-types';
+import HashBadge from './HashBadge';
+import { formatFileSize, formatRelativeTime } from '../utils/formatters';
+import styles from './FileCard.module.css';
 
-/**
- * FileCard — displays a single file with download & delete actions.
- * Props:
- *   file     — { id, filename, file_size, mime_type, uploaded_at, sha256_hash }
- *   onDelete — callback invoked after successful deletion
- */
-export default function FileCard({ file, onDelete }) {
-  const [downloading, setDownloading] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  /**
-   * Format bytes into a human-readable string.
-   * < 1 MB → show in KB (1 decimal), else MB (1 decimal).
-   */
-  function formatSize(bytes) {
-    if (bytes == null) return '—';
-    if (bytes < 1024 * 1024) {
-      return `${(bytes / 1024).toFixed(1)} KB`;
+const FileCard = ({ file, onDownload, onDelete }) => {
+  const getFileIcon = () => {
+    const type = file.mime_type || '';
+    if (type.includes('pdf')) {
+      return (
+        <svg className={styles.iconRed} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      );
     }
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  /**
-   * Format a date string nicely.
-   */
-  function formatDate(dateStr) {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  }
-
-  /**
-   * Get a file-type icon based on mime type.
-   */
-  function getFileIcon(mimeType) {
-    if (!mimeType) return '📄';
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType.startsWith('video/')) return '🎬';
-    if (mimeType.startsWith('audio/')) return '🎵';
-    if (mimeType.includes('pdf')) return '📕';
-    if (mimeType.includes('word') || mimeType.includes('document')) return '📘';
-    if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '📊';
-    if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compressed')) return '🗜️';
-    if (mimeType.includes('text')) return '📝';
-    return '📄';
-  }
-
-  /**
-   * Download the file as a blob and trigger browser download.
-   */
-  async function handleDownload() {
-    setDownloading(true);
-    try {
-      const response = await api.get(`/files/${file.id}/download`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', file.filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success(`Downloaded ${file.filename}`);
-    } catch (err) {
-      // TODO: remove in prod
-      console.log('Download error:', err);
-      toast.error('Failed to download file. Please try again.');
-    } finally {
-      setDownloading(false);
+    if (type.includes('image')) {
+      return (
+        <svg className={styles.iconYellow} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      );
     }
-  }
+    return (
+      <svg className={styles.iconBlue} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    );
+  };
 
-  /**
-   * Delete the file and call onDelete callback.
-   */
-  async function handleDelete() {
-    if (!window.confirm(`Delete "${file.filename}"? This cannot be undone.`)) return;
+  const truncateName = (name) => {
+    return name.length > 25 ? `${name.substring(0, 22)}...` : name;
+  };
 
-    setDeleting(true);
-    try {
-      await api.delete(`/files/${file.id}`);
-      toast.success(`Deleted ${file.filename}`);
-      if (onDelete) onDelete(file.id);
-    } catch (err) {
-      // TODO: remove in prod
-      console.log('Delete error:', err);
-      toast.error('Failed to delete file. Please try again.');
-    } finally {
-      setDeleting(false);
+  const handleDelete = () => {
+    if (window.confirm('Delete this file permanently?')) {
+      onDelete(file.id);
     }
-  }
+  };
 
   return (
-    <div className="file-card">
-      <div className="file-card-header">
-        <span className="file-card-icon">{getFileIcon(file.mime_type)}</span>
-        <div className="file-card-encrypted" title="Encrypted with AES-256">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="var(--success)" strokeWidth="1.2" />
-            <path d="M4.5 6V4.5C4.5 3.11929 5.61929 2 7 2C8.38071 2 9.5 3.11929 9.5 4.5V6" stroke="var(--success)" strokeWidth="1.2" strokeLinecap="round" />
+    <div className={styles.card}>
+      <div className={styles.header}>
+        <div className={styles.iconContainer}>
+          {getFileIcon()}
+        </div>
+        <div className={styles.secureBadge}>
+          <svg className={styles.lockIcon} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
+          Encrypted
         </div>
       </div>
 
-      <div className="file-card-body">
-        <h4 className="file-card-name" title={file.filename}>
-          {file.filename}
-        </h4>
-        <div className="file-card-meta">
-          <span className="file-card-size">{formatSize(file.file_size)}</span>
-          <span className="file-card-dot">·</span>
-          <span className="file-card-date">{formatDate(file.uploaded_at)}</span>
+      <div className={styles.content}>
+        <h4 className={styles.filename} title={file.filename}>{truncateName(file.filename)}</h4>
+        <div className={styles.metadata}>
+          <span className={styles.size}>{formatFileSize(file.file_size)}</span>
+          <span className={styles.dot}>•</span>
+          <span className={styles.date}>{formatRelativeTime(file.uploaded_at)}</span>
+        </div>
+        
+        <div className={styles.hashSection}>
+          <HashBadge hash={file.sha256_hash} />
         </div>
       </div>
 
-      <div className="file-card-actions">
-        <button
-          className="btn btn--secondary btn--sm"
-          onClick={handleDownload}
-          disabled={downloading}
+      <div className={styles.footer}>
+        <button 
+          className={styles.downloadBtn} 
+          onClick={() => onDownload(file.id, file.filename)}
+          aria-label="Download file"
         >
-          {downloading ? (
-            <span className="spinner spinner--sm" />
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 2V9.5M7 9.5L4 6.5M7 9.5L10 6.5M2 11.5H12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-          {downloading ? 'Downloading…' : 'Download'}
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download
         </button>
-        <button
-          className="btn btn--danger btn--sm"
+        <button 
+          className={styles.deleteBtn} 
           onClick={handleDelete}
-          disabled={deleting}
+          aria-label="Delete file"
         >
-          {deleting ? (
-            <span className="spinner spinner--sm" />
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2.5 4H11.5M5 4V2.5H9V4M5.5 6.5V10.5M8.5 6.5V10.5M3.5 4L4 11.5H10L10.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-          {deleting ? 'Deleting…' : 'Delete'}
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
         </button>
       </div>
     </div>
   );
-}
+};
+
+FileCard.propTypes = {
+  file: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    filename: PropTypes.string.isRequired,
+    file_size: PropTypes.number.isRequired,
+    mime_type: PropTypes.string,
+    uploaded_at: PropTypes.string.isRequired,
+    sha256_hash: PropTypes.string.isRequired
+  }).isRequired,
+  onDownload: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired
+};
+
+export default FileCard;
