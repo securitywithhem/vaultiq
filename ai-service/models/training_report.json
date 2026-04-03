@@ -1,0 +1,44 @@
+{
+  "accuracy": 1.0,
+  "total_samples": 10,
+  "human_samples": 5,
+  "ai_samples": 5,
+  "classification_report": {
+    "Human": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1.0
+    },
+    "AI": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 1.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 2.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 2.0
+    }
+  },
+  "feature_importance": {
+    "avg_sentence_length": 0.1455,
+    "sentence_length_std": 0.0894,
+    "type_token_ratio": 0.2954,
+    "avg_word_length": 0.0332,
+    "punctuation_density": 0.116,
+    "contraction_rate": 0.2428,
+    "paragraph_uniformity": 0.0,
+    "bigram_repetition_rate": 0.0776
+  },
+  "trained_at": "2026-04-02T16:53:24.908916"
+}

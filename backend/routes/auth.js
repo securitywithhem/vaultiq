@@ -7,7 +7,7 @@
 
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { supabaseAuth } = require('../utils/supabase');
+const { supabaseAdmin } = require('../utils/supabase');
 const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
@@ -29,7 +29,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Full name is required' });
     }
 
-    const { data: authData, error: authError } = await supabaseAuth.auth.signUp({
+    const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
       email,
       password,
       options: { data: { full_name: fullName } }
@@ -66,7 +66,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const { data: authData, error: authError } = await supabaseAuth.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
       email,
       password
     });

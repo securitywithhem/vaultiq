@@ -5,11 +5,11 @@ import FileCard from '../components/FileCard';
 import EmptyState from '../components/EmptyState';
 import { useFiles } from '../hooks/useFiles';
 import { fileService } from '../services/fileService';
-import useDocumentTitle from '../hooks/useDocumentTitle';
+
 import styles from './Dashboard.module.css';
 
 const Dashboard = () => {
-  useDocumentTitle('Dashboard | VaultIQ');
+
   const { files, isLoading, fetchFiles, addFileOptimistic, deleteFile } = useFiles();
 
   useEffect(() => {
