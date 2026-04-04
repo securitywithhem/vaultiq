@@ -16,6 +16,14 @@
   margin-bottom: 40px;
 }
 
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
 .title {
   font-size: 2rem;
   color: var(--text-primary);
@@ -25,6 +33,36 @@
 .subtitle {
   color: var(--text-secondary);
   font-size: 1.125rem;
+}
+
+.refreshButton {
+  padding: 10px 24px;
+  background: var(--accent-blue);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
+}
+
+.refreshButton:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+}
+
+.refreshButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.refreshButton:disabled {
+  background: var(--bg-border);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .loaderArea {
@@ -47,7 +85,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 24px;
-  margin-bottom: 40px;
+  margin-bottom: 32px;
 }
 
 @media (min-width: 768px) {
@@ -102,6 +140,19 @@
   margin-top: 4px;
 }
 
+.chartsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (min-width: 1024px) {
+  .chartsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .chartSection {
   background-color: var(--bg-surface);
   border: 1px solid var(--bg-border);
@@ -110,12 +161,16 @@
 }
 
 .chartSection h2 {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   margin-bottom: 24px;
   color: var(--text-primary);
 }
 
 .chartContainer {
-  height: 350px;
+  height: 300px;
   width: 100%;
+}
+
+.fullWidth {
+  margin-top: 24px;
 }

@@ -23,8 +23,8 @@ async function uploadToS3(key, buffer, mimeType, iv) {
       Bucket: getBucket(),
       Key: key,
       Body: buffer,
-      ContentType: mimeType || 'application/octet-stream',
-      Metadata: { iv: typeof iv === 'string' ? iv : iv.toString('hex') }
+      ContentType: mimeType || 'application/octet-stream'
+      // Note: IV is now prepended to buffer, no need to store in metadata
     });
     return await s3Client.send(command);
   } catch (err) {
@@ -40,20 +40,37 @@ async function downloadFromS3(key) {
       Key: key
     });
     const response = await s3Client.send(command);
-    const ivHex = response.Metadata?.iv;
-    if (!ivHex) throw new Error('IV missing from S3 metadata');
-    const iv = Buffer.from(ivHex, 'hex');
 
-    if (response.ContentLength > 10 * 1024 * 1024) {
-      return { body: response.Body, metadata: { ...response.Metadata, iv }, isStream: true };
-    }
-
+    // IV is now prepended to the file (first 16 bytes)
     const chunks = [];
     for await (const chunk of response.Body) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
+
+    const fullData = Buffer.concat(chunks);
     
-    return { body: Buffer.concat(chunks), metadata: { ...response.Metadata, iv } };
+    // Extract prepended IV (first 16 bytes)
+    const iv = fullData.slice(0, 16);
+    const ciphertext = fullData.slice(16);
+
+    if (fullData.length < 16) {
+      throw new Error('File corruption: IV missing');
+    }
+
+    // For large files, return as stream
+    if (response.ContentLength > 10 * 1024 * 1024) {
+      return { 
+        body: response.Body, 
+        metadata: { iv }, 
+        isStream: true 
+      };
+    }
+
+    return { 
+      body: ciphertext, 
+      metadata: { iv }, 
+      isStream: false 
+    };
   } catch (err) {
     console.error('[downloadFromS3]', err.message);
     throw err;

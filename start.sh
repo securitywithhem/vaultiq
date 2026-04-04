@@ -1,7 +1,11 @@
 #!/bin/bash
 
-# start.sh - VaultIQ Day 1 Orchestrator
-# Starts Node.js Backend and Python AI Service concurrently
+# start.sh - VaultIQ Full Stack Orchestrator
+# Starts Node.js Backend, Python AI Service, and React Frontend concurrently
+
+# Environment Setup
+export BROWSER=none
+export CI=true
 
 # Load environment variables
 if [ -f backend/.env ]; then
@@ -13,7 +17,7 @@ fi
 
 # Validation logic
 validate_env() {
-  local vars=("AI_SERVICE_URL" "PORT" "AWS_REGION" "HDFS_WEBHDFS_URL")
+  local vars=("AI_SERVICE_URL" "PORT" "AWS_REGION" "S3_BUCKET_NAME")
   for var in "${vars[@]}"; do
     if [ -z "${!var}" ]; then
       echo "Error: $var is not set in backend/.env"
@@ -26,27 +30,53 @@ validate_env
 
 # Cleanup logic on exit
 cleanup() {
-  echo "Stopping services..."
-  kill $BACKEND_PID $AI_PID 2>/dev/null
+  echo ""
+  echo "Stopping all VaultIQ services..."
+  kill $BACKEND_PID $AI_PID $FRONTEND_PID 2>/dev/null
   exit 0
 }
 
 trap cleanup SIGINT SIGTERM
 
-echo "Starting VaultIQ AI Service (FastAPI)..."
+echo "--- Starting VaultIQ Ecosystem ---"
+
+# 1. AI Service (Port 8001)
+echo "[AI] Starting VaultIQ AI Service..."
 cd ai-service
-uvicorn main:app --host 0.0.0.0 --port ${PORT_AI:-8001} &
-AI_PID=$!
+if [ -d "venv" ]; then
+    ./venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT_AI:-8001} > server.log 2>&1 &
+    AI_PID=$!
+else
+    echo "Warning: AI venv not found. Attempting global uvicorn..."
+    python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT_AI:-8001} > server.log 2>&1 &
+    AI_PID=$!
+fi
 cd ..
 
-echo "Starting VaultIQ Backend (Express)..."
+# 2. Backend (Port 5000)
+echo "[BE] Starting VaultIQ Backend..."
 cd backend
-npm run dev &
+npm run dev > server.log 2>&1 &
 BACKEND_PID=$!
 cd ..
 
-echo "VaultIQ Day 1 Services Running!"
-echo "AI Service PID: $AI_PID"
-echo "Backend PID: $BACKEND_PID"
+# 3. Frontend (Port 3000)
+echo "[FE] Starting VaultIQ Frontend..."
+cd frontend
+# Ensure dependencies are linked if needed, but assuming they are
+npm start > /dev/null 2>&1 &
+FRONTEND_PID=$!
+cd ..
 
-wait $BACKEND_PID $AI_PID
+echo ""
+echo "VaultIQ Services are launching!"
+echo "--------------------------------"
+echo "AI Service PID: $AI_PID (Port: ${PORT_AI:-8001})"
+echo "Backend PID:    $BACKEND_PID (Port: ${PORT:-5000})"
+echo "Frontend PID:   $FRONTEND_PID (Port: 3000)"
+echo "--------------------------------"
+echo "Wait 5-10s for full readiness..."
+echo "Press Ctrl+C to stop all services."
+
+# Wait for processes
+wait $BACKEND_PID $AI_PID $FRONTEND_PID

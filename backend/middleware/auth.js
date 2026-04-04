@@ -7,22 +7,30 @@
 
 const jwt = require('jsonwebtoken');
 
-// Validate JWT from Authorization header
+// Validate JWT from Authorization header or cookies
 function authenticateToken(req, res, next) {
   try {
-    const authHeader = req.headers['authorization'];
+    // Try to get token from cookie first (recommended)
+    let token = req.cookies?.vaultiq_access_token;
     
-    if (!authHeader) {
-      return res.status(401).json({ error: 'Token missing' });
+    // Fallback to Authorization header for API clients
+    if (!token) {
+      const authHeader = req.headers['authorization'];
+      if (authHeader) {
+        token = authHeader.split(' ')[1];
+      }
     }
-
-    const token = authHeader.split(' ')[1];
     
     if (!token) {
       return res.status(401).json({ error: 'Token missing' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    if (decoded.type !== 'access') {
+      return res.status(401).json({ error: 'Invalid token type' });
+    }
+    
     req.user = { id: decoded.sub, email: decoded.email };
     
     next();

@@ -7,6 +7,8 @@
 
 const express = require('express');
 const multer = require('multer');
+const path = require('path');
+const crypto = require('crypto');
 const { authenticateToken } = require('../middleware/auth');
 const { encrypt, decrypt, sha256, createDecipher } = require('../utils/crypto');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../utils/s3');
@@ -16,24 +18,76 @@ const { logEvent } = require('../utils/hdfsLogger');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// File upload validation constants
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.macro-enabled.document',
+  'text/plain',
+  'text/markdown'
+];
+
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.docm', '.txt', '.md'];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+// Sanitize filename - remove path traversal attempts and unsafe characters
+function sanitizeFilename(filename) {
+  // Remove directory path separators
+  let sanitized = path.basename(filename);
+  // Replace unsafe characters with underscore
+  sanitized = sanitized.replace(/[^a-zA-Z0-9._\-]/g, '_');
+  // Limit length
+  return sanitized.slice(0, 255);
+}
+
 // Upload a new file
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
   try {
+    // 1. Validate file exists
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     if (!req.file.buffer) return res.status(400).json({ error: 'No valid file uploaded' });
 
-    const sha256_hash = sha256(req.file.buffer);
-    const { data: encrypted, iv } = encrypt(req.file.buffer);
+    // 2. Validate file size
+    if (req.file.size > MAX_FILE_SIZE) {
+      return res.status(413).json({ error: `File exceeds maximum size of ${MAX_FILE_SIZE / (1024*1024)}MB` });
+    }
 
-    const s3Key = `${req.user.id}/${Date.now()}_${req.file.originalname}.enc`;
+    // 3. Validate MIME type
+    if (!ALLOWED_MIME_TYPES.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, DOCX, TXT, Markdown' });
+    }
+
+    // 4. Validate file extension
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return res.status(400).json({ error: 'Invalid file extension' });
+    }
+
+    // 5. Sanitize filename (prevents path traversal)
+    const sanitizedFilename = sanitizeFilename(req.file.originalname);
     
-    await uploadToS3(s3Key, encrypted, req.file.mimetype, iv.toString('hex'));
+    // 6. Generate secure S3 key with UUID
+    const uniqueId = crypto.randomUUID();
+    const s3Key = `${req.user.id}/${Date.now()}_${uniqueId}_${sanitizedFilename}.enc`;
 
+    // 7. Calculate SHA-256 hash before encryption
+    const sha256_hash = sha256(req.file.buffer);
+
+    // 8. Encrypt file
+    const { data: encrypted, iv } = encrypt(req.file.buffer);
+    
+    // 9. Prepend IV to encrypted data (standard practice - IV doesn't need to be secret)
+    const finalData = Buffer.concat([iv, encrypted]);
+
+    // 10. Upload to S3 (without exposing IV in metadata)
+    await uploadToS3(s3Key, finalData, req.file.mimetype);
+
+    // 11. Store metadata in Supabase
     const { data: fileRecord, error: dbError } = await supabaseAdmin
       .from('files')
       .insert({
         user_id: req.user.id,
-        filename: req.file.originalname,
+        filename: sanitizedFilename,
         s3_key: s3Key,
         file_size: req.file.size,
         mime_type: req.file.mimetype || 'application/octet-stream',
@@ -104,7 +158,7 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
     }
 
     const { body, metadata, isStream } = await downloadFromS3(file.s3_key);
-    
+
     if (!metadata || !metadata.iv) {
       return res.status(500).json({ error: 'Missing encryption metadata' });
     }

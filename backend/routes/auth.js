@@ -48,9 +48,30 @@ router.post('/register', async (req, res) => {
       fullName: fullName
     };
 
-    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Create short-lived access token (1 hour)
+    const token = jwt.sign({ sub: user.id, email: user.email, type: 'access' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    
+    // Create refresh token (7 days)
+    const refreshToken = jwt.sign({ sub: user.id, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    return res.status(201).json({ data: { user, token } });
+    // Set httpOnly, Secure cookies instead of returning token in JSON
+    res.cookie('vaultiq_access_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 1000 * 60 * 60, // 1 hour
+      path: '/'
+    });
+
+    res.cookie('vaultiq_refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/'
+    });
+
+    return res.status(201).json({ data: { user } }); // Token NOT in response body
   } catch (err) {
     console.error('[auth.register]', err.message);
     return res.status(500).json({ error: 'Internal server error' });
@@ -75,14 +96,35 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Create short-lived access token (1 hour)
+    const token = jwt.sign({ sub: authData.user.id, email: authData.user.email, type: 'access' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    
+    // Create refresh token (7 days)
+    const refreshToken = jwt.sign({ sub: authData.user.id, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
     const user = {
       id: authData.user.id,
       email: authData.user.email
     };
 
-    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Set httpOnly, Secure cookies instead of returning token in JSON
+    res.cookie('vaultiq_access_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 1000 * 60 * 60, // 1 hour
+      path: '/'
+    });
 
-    return res.status(200).json({ data: { user, token } });
+    res.cookie('vaultiq_refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/'
+    });
+
+    return res.status(200).json({ data: { user } }); // Token NOT in response body
   } catch (err) {
     console.error('[auth.login]', err.message);
     return res.status(500).json({ error: 'Internal server error' });
@@ -104,6 +146,46 @@ router.get('/me', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[auth.me]', err.message);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Logout user - clear all cookies
+router.post('/logout', (req, res) => {
+  res.clearCookie('vaultiq_access_token', { path: '/' });
+  res.clearCookie('vaultiq_refresh_token', { path: '/' });
+  res.status(200).json({ data: { message: 'Logged out successfully' } });
+});
+
+// Refresh access token using refresh token
+router.post('/refresh', (req, res) => {
+  try {
+    const refreshToken = req.cookies.vaultiq_refresh_token;
+    
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Refresh token missing' });
+    }
+
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ error: 'Invalid token type' });
+    }
+
+    // Create new access token
+    const newAccessToken = jwt.sign({ sub: decoded.sub, type: 'access' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    res.cookie('vaultiq_access_token', newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 1000 * 60 * 60,
+      path: '/'
+    });
+
+    res.status(200).json({ data: { message: 'Token refreshed' } });
+  } catch (err) {
+    console.error('[auth.refresh]', err.message);
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
 });
 
