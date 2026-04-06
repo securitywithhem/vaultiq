@@ -24,10 +24,12 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.macro-enabled.document',
   'text/plain',
-  'text/markdown'
+  'text/markdown',
+  'application/rtf',
+  'text/rtf'
 ];
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.docm', '.txt', '.md'];
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.docm', '.txt', '.md', '.rtf'];
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 // Sanitize filename - remove path traversal attempts and unsafe characters
@@ -54,12 +56,14 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
 
     // 3. Validate MIME type
     if (!ALLOWED_MIME_TYPES.includes(req.file.mimetype)) {
-      return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, DOCX, TXT, Markdown' });
+      console.warn(`[files.upload] Unsupported MIME type: ${req.file.mimetype} for ${req.file.originalname}`);
+      return res.status(400).json({ error: 'Unsupported file type. Allowed: PDF, DOCX, TXT, Markdown, RTF' });
     }
 
     // 4. Validate file extension
     const ext = path.extname(req.file.originalname).toLowerCase();
     if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      console.warn(`[files.upload] Invalid file extension: ${ext} for ${req.file.originalname}`);
       return res.status(400).json({ error: 'Invalid file extension' });
     }
 

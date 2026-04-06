@@ -1,33 +1,40 @@
 import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
 import LoadingSpinner from '../components/LoadingSpinner';
-
 import styles from './PlagiarismChecker.module.css';
+import { checkPlagiarism } from '../services/plagiarismService';
 
 const PlagiarismChecker = () => {
 
   const [inputText, setInputText] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
 
-  const handleScan = () => {
+  const handleScan = async () => {
     if (!inputText.trim()) return;
     
     setIsScanning(true);
     setResult(null);
+    setError(null);
 
-    // Mock AI Analysis Delay
-    setTimeout(() => {
-      // Dummy response as backend AI route doesn't exist yet
+    try {
+      const data = await checkPlagiarism(inputText);
+      
+      // Map AI service response to UI format
       setResult({
-        score: Math.floor(Math.random() * 30), // 0-30%
-        matches: [
-          { url: 'wikipedia.org/ai-security', similarity: '12%' },
-          { url: 'github.com/crypto-examples', similarity: '8%' }
-        ]
+        score: Math.round(data.cosine_score * 100),
+        verdict: data.verdict,
+        matches: data.matches.map(m => ({
+          url: `Matched Segment: "${m.matched_sentence.substring(0, 30)}..."`,
+          similarity: `${Math.round(m.similarity * 100)}%`
+        }))
       });
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setIsScanning(false);
-    }, 2500);
+    }
   };
 
   const getScoreColor = (score) => {

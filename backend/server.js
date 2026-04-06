@@ -17,6 +17,7 @@ const csrf = require('csurf');
 const authRoutes = require('./routes/auth');
 const filesRoutes = require('./routes/files');
 const analyticsRoutes = require('./routes/analytics');
+const plagiarismRoutes = require('./routes/plagiarism');
 
 const REQUIRED_ENV = [
   'PORT', 'JWT_SECRET', 'ENCRYPTION_KEY', 'SUPABASE_URL', 
@@ -121,8 +122,7 @@ const authLimiter = rateLimit({
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 100,
-  message: { error: 'Upload limit exceeded, please try again later' },
-  keyGenerator: (req) => req.user?.id || req.ip
+  message: { error: 'Upload limit exceeded, please try again later' }
 });
 
 const fileLimiter = rateLimit({

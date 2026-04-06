@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:15-alpine
+    container_name: vaultiq-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vaultiq}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vaultiq-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: vaultiq-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - vaultiq-net
+
   backend:
     build:
       context: ./backend
@@ -13,6 +35,8 @@ services:
     env_file:
       - backend/.env
     depends_on:
+      - db
+      - redis
       - ai-service
     networks:
       - vaultiq-net
@@ -30,6 +54,64 @@ services:
     networks:
       - vaultiq-net
 
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    networks:
+      - vaultiq-net
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - vaultiq-net
+
+  spark-master:
+    image: bde2020/spark-master:3.0.1-hadoop3.2
+    container_name: spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    environment:
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+    networks:
+      - vaultiq-net
+
+  spark-worker:
+    image: bde2020/spark-worker:3.0.1-hadoop3.2
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    networks:
+      - vaultiq-net
+
 networks:
   vaultiq-net:
     driver: bridge
+
+volumes:
+  postgres_data:
+  hadoop_namenode:
+  hadoop_datanode:
+

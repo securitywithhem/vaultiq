@@ -51,7 +51,8 @@ const UploadZone = ({ onUploadSuccess }) => {
       }, 3000);
       
     } catch (err) {
-      toast.error('Upload failed');
+      const errorMsg = err.response?.data?.error || 'Upload failed';
+      toast.error(errorMsg);
     } finally {
       setIsUploading(false);
     }

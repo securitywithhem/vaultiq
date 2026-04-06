@@ -93,6 +93,7 @@ router.post('/login', async (req, res) => {
     });
 
     if (authError) {
+      console.warn(`[auth.login] Authentication failure for ${email}:`, authError.message);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -157,7 +158,7 @@ router.post('/logout', (req, res) => {
 });
 
 // Refresh access token using refresh token
-router.post('/refresh', (req, res) => {
+router.post('/refresh', async (req, res) => {
   try {
     const refreshToken = req.cookies.vaultiq_refresh_token;
     
@@ -171,8 +172,16 @@ router.post('/refresh', (req, res) => {
       return res.status(401).json({ error: 'Invalid token type' });
     }
 
-    // Create new access token
-    const newAccessToken = jwt.sign({ sub: decoded.sub, type: 'access' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    // Look up user to get email for the new access token
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(decoded.sub);
+    const email = userData?.user?.email || '';
+
+    // Create new access token with email included
+    const newAccessToken = jwt.sign(
+      { sub: decoded.sub, email, type: 'access' },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
 
     res.cookie('vaultiq_access_token', newAccessToken, {
       httpOnly: true,

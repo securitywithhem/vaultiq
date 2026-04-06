@@ -6,16 +6,22 @@ from pydantic import BaseModel
 from extractor import extract_text
 from trainer import train_model, REPORT_PATH
 from detector import detect, model_trained
+from similarity import compare, determine_verdict
+from corpus import corpus_store
 
 app = FastAPI(title="VaultIQ AI Content Detection Service")
 
 class TextRequest(BaseModel):
     text: str
 
+class CorpusRequest(BaseModel):
+    doc_id: str
+    text: str
+
 @app.get("/health")
 async def health_check():
     """
-    Returns the system health and model training status.
+    Returns the system health, model training status, and corpus size.
     """
     trained = model_trained()
     report = None
@@ -29,6 +35,7 @@ async def health_check():
     return {
         "status": "ok",
         "model_trained": trained,
+        "corpus_size": corpus_store.size(),
         "training_report": {
             "accuracy": report.get('accuracy') if report else None,
             "total_samples": report.get('total_samples') if report else None
@@ -90,6 +97,42 @@ async def detect_raw_text(request: TextRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
+
+@app.post("/plagiarism/add")
+async def add_to_corpus(request: CorpusRequest):
+    """
+    Adds a document to the in-memory corpus for plagiarism checking.
+    """
+    corpus_store.add(request.doc_id, request.text)
+    return {"status": "success", "message": f"Document {request.doc_id} added to corpus", "corpus_size": corpus_store.size()}
+
+@app.post("/plagiarism/check")
+async def check_plagiarism(request: TextRequest):
+    """
+    Compares text against the entire corpus.
+    """
+    if corpus_store.size() == 0:
+        return {
+            "status": "success",
+            "message": "Corpus is empty",
+            "cosine_score": 0.0,
+            "jaccard_score": 0.0,
+            "verdict": "ORIGINAL",
+            "matches": []
+        }
+
+    all_texts = corpus_store.get_all()
+    cosine, jaccard, matches = compare(request.text, all_texts)
+    verdict = determine_verdict(cosine, jaccard)
+
+    return {
+        "status": "success",
+        "cosine_score": cosine,
+        "jaccard_score": jaccard,
+        "verdict": verdict,
+        "matches": matches[:10] # Return top 10 matches
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

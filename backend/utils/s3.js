@@ -23,7 +23,8 @@ async function uploadToS3(key, buffer, mimeType, iv) {
       Bucket: getBucket(),
       Key: key,
       Body: buffer,
-      ContentType: mimeType || 'application/octet-stream'
+      ContentType: mimeType || 'application/octet-stream',
+      ServerSideEncryption: 'AES256'
       // Note: IV is now prepended to buffer, no need to store in metadata
     });
     return await s3Client.send(command);
