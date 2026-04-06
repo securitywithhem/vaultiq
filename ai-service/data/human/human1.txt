@@ -1,1 +1,0 @@
-The quick brown fox jumps over the lazy dog. This is some human-written text for the purposes of training a classifier. It contains some variation in sentence length and some contractions like don't and it's. Paragraphs are often irregular and have different themes. I'm writing this myself to make sure it looks like a real person wrote it.

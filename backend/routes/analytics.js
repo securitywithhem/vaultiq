@@ -1,82 +1,85 @@
 /**
  * @file analytics.js
- * @description Serves analytics metrics from HDFS
- * @dependencies express, node-fetch, auth middleware
+ * @description Serves analytics metrics from HDFS, triggers log processing
+ * @dependencies express, node-fetch, child_process, auth middleware, logger
  * @exports router
  */
 
 const express = require('express');
 const fetch = require('node-fetch');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 const { authenticateToken } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// Fetch storage metrics 
-router.get('/', authenticateToken, async (req, res) => {
-  const defaultStats = { 
-    totalFiles: 0, 
-    totalStorage: 0, 
-    eventDistribution: {}, 
-    userActivity: {}, 
-    fileTypeDistribution: [], 
-    recentUploads: [] 
-  };
+const DEFAULT_STATS = {
+  totalFiles: 0,
+  totalStorage: 0,
+  eventDistribution: {},
+  userActivity: {},
+  fileTypeDistribution: [],
+  recentUploads: []
+};
 
+// ─── GET / (fetch analytics) ────────────────────────────────────────
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const baseUrl = process.env.HDFS_WEBHDFS_URL;
     const url = `${baseUrl}/vaultiq/results/analytics.json?op=OPEN`;
-    
+
     let stats = null;
-    const hdfsRes = await fetch(url, { timeout: 5000 });
-    
-    if (hdfsRes.status === 307 || hdfsRes.status === 200) {
-      const readUrl = hdfsRes.status === 307 ? hdfsRes.headers.get('location') : url;
-      
-      if (readUrl) {
-        const dataRes = await fetch(readUrl, { timeout: 5000 });
-        if (dataRes.ok) {
-          stats = await dataRes.json();
+
+    try {
+      const hdfsRes = await fetch(url, { timeout: 5000 });
+
+      if (hdfsRes.status === 307 || hdfsRes.status === 200) {
+        const readUrl = hdfsRes.status === 307 ? hdfsRes.headers.get('location') : url;
+
+        if (readUrl) {
+          const dataRes = await fetch(readUrl, { timeout: 5000 });
+          if (dataRes.ok) {
+            stats = await dataRes.json();
+          }
         }
       }
+    } catch (hdfsErr) {
+      logger.warn('HDFS analytics fetch failed — returning defaults', {
+        requestId: req.id, error: hdfsErr.message
+      });
     }
 
-    return res.status(200).json({ data: stats || defaultStats });
+    return res.status(200).json({ data: stats || DEFAULT_STATS });
   } catch (err) {
-    console.error('[analytics.get]', err.message);
-    return res.status(200).json({ data: defaultStats });
+    logger.error('Analytics fetch error', { requestId: req.id, error: err.message });
+    return res.status(200).json({ data: DEFAULT_STATS });
   }
 });
 
-/**
- * @route POST /api/analytics/refresh
- * @description Triggers the Python Log Processor (MapReduce style)
- * @access Private
- */
+// ─── POST /refresh (trigger log processing) ────────────────────────
 router.post('/refresh', authenticateToken, async (req, res) => {
   try {
-    const scriptPath = path.join(__dirname, '../scripts/process_logs.py');
-    const env = { 
-      ...process.env, 
-      PYTHONPATH: process.env.PYTHONPATH || '.' 
-    };
+    const scriptPath = path.resolve(__dirname, '../scripts/process_logs.py');
 
-    console.log('[analytics.refresh] Triggering log processing...');
+    logger.info('Triggering analytics log processing', { requestId: req.id });
 
-    // Run as background process, but return acceptance quickly
-    exec(`python3 ${scriptPath}`, { env }, (error, stdout, stderr) => {
+    // execFile is safe from shell injection (no shell interpolation)
+    execFile('python3', [scriptPath], {
+      env: { ...process.env, PYTHONPATH: process.env.PYTHONPATH || '.' },
+      timeout: 120000 // 2 minute timeout
+    }, (error, stdout, stderr) => {
       if (error) {
-        console.error('[analytics.refresh] Processing Error:', stderr);
+        logger.error('Analytics processing failed', { error: stderr || error.message });
         return;
       }
-      console.log('[analytics.refresh] Processing Success:', stdout);
+      logger.info('Analytics processing complete', { output: stdout.trim() });
     });
 
-    return res.status(202).json({ message: 'Analytics aggregation started in background' });
+    return res.status(202).json({ data: { message: 'Analytics aggregation started in background' } });
   } catch (err) {
-    console.error('[analytics.refresh]', err.message);
-    return res.status(500).json({ error: 'Internal Error' });
+    logger.error('Analytics refresh error', { requestId: req.id, error: err.message });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -1,16 +1,16 @@
 {
-  "name": "backend",
+  "name": "vaultiq-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "VaultIQ — Encrypted cloud storage backend with AI-powered document analysis",
+  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "NODE_ENV=production node server.js",
     "dev": "node --watch server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["vaultiq", "encrypted-storage", "s3", "supabase"],
+  "author": "Hem Gabhawala",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
     "@aws-sdk/lib-storage": "^3.1024.0",
@@ -19,16 +19,17 @@
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
-    "csurf": "^1.2.2",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
-    "express-validator": "^7.3.2",
     "form-data": "^4.0.5",
     "helmet": "^7.2.0",
+    "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "node-fetch": "^2.7.0",
-    "nodemailer": "^8.0.4"
+    "nodemailer": "^8.0.4",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0"
   }
 }

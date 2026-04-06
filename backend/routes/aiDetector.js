@@ -1,7 +1,7 @@
 /**
  * @file aiDetector.js
  * @description Proxy routes for forwarding AI Content Detection requests to the Python service
- * @dependencies express, node-fetch, form-data, multer, auth middleware
+ * @dependencies express, node-fetch, form-data, multer, auth middleware, validate, logger
  * @exports router
  */
 
@@ -10,35 +10,32 @@ const fetch = require('node-fetch');
 const FormData = require('form-data');
 const multer = require('multer');
 const { authenticateToken } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
+const { checkTextSchema } = require('../validators/aiDetector.schema');
+const logger = require('../utils/logger');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
-
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
 
-/**
- * POST /api/ai-detect/train
- * Forwards training requests to the AI service.
- */
+// ─── POST /train ────────────────────────────────────────────────────
 router.post('/train', authenticateToken, async (req, res) => {
   try {
     const response = await fetch(`${AI_SERVICE_URL}/train`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 60000 // Training can take time
     });
-    
+
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (err) {
-    console.error('[aiDetector.train]', err.message);
-    return res.status(500).json({ error: 'AI Service connection failed' });
+    logger.error('AI train error', { requestId: req.id, error: err.message });
+    return res.status(502).json({ error: 'AI Service connection failed' });
   }
 });
 
-/**
- * POST /api/ai-detect/check
- * Forwards file upload detection requests.
- */
+// ─── POST /check (file upload) ──────────────────────────────────────
 router.post('/check', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -54,60 +51,53 @@ router.post('/check', authenticateToken, upload.single('file'), async (req, res)
     const response = await fetch(`${AI_SERVICE_URL}/detect`, {
       method: 'POST',
       body: form,
-      headers: form.getHeaders()
+      headers: form.getHeaders(),
+      timeout: 30000
     });
 
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (err) {
-    console.error('[aiDetector.check]', err.message);
-    return res.status(500).json({ error: 'AI Service detection failed' });
+    logger.error('AI detect file error', { requestId: req.id, error: err.message });
+    return res.status(502).json({ error: 'AI Service detection failed' });
   }
 });
 
-/**
- * POST /api/ai-detect/check-text
- * Forwards raw text detection requests.
- */
-router.post('/check-text', authenticateToken, async (req, res) => {
+// ─── POST /check-text ───────────────────────────────────────────────
+router.post('/check-text', authenticateToken, validate(checkTextSchema), async (req, res) => {
   try {
     const { text } = req.body;
-    if (!text) {
-      return res.status(400).json({ error: 'Text content is required' });
-    }
 
     const response = await fetch(`${AI_SERVICE_URL}/detect-text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text }),
+      timeout: 30000
     });
 
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (err) {
-    console.error('[aiDetector.checkText]', err.message);
-    return res.status(500).json({ error: 'AI Service text detection failed' });
+    logger.error('AI detect text error', { requestId: req.id, error: err.message });
+    return res.status(502).json({ error: 'AI Service text detection failed' });
   }
 });
 
-/**
- * GET /api/ai-detect/status
- * Public health check for the AI service.
- */
+// ─── GET /status (public health check) ─────────────────────────────
 router.get('/status', async (req, res) => {
   try {
-    const response = await fetch(`${AI_SERVICE_URL}/health`, { timeout: 2000 });
+    const response = await fetch(`${AI_SERVICE_URL}/health`, { timeout: 3000 });
     const data = await response.json();
-    return res.status(200).json({ 
-      online: true, 
-      model_trained: data.model_trained,
-      training_report: data.training_report 
+    return res.status(200).json({
+      data: {
+        online: true,
+        model_trained: data.model_trained || false,
+        training_report: data.training_report || null
+      }
     });
-  } catch (err) {
-    // Service is unreachable
-    return res.status(200).json({ 
-      online: false, 
-      model_trained: false 
+  } catch {
+    return res.status(200).json({
+      data: { online: false, model_trained: false }
     });
   }
 });

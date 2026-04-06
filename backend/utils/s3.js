@@ -41,36 +41,37 @@ async function downloadFromS3(key) {
       Key: key
     });
     const response = await s3Client.send(command);
+    const contentLength = response.ContentLength || 0;
 
-    // IV is now prepended to the file (first 16 bytes)
+    // For large files, stream directly without buffering the whole file
+    // The first 16 bytes of the stream are the prepended IV.
+    if (contentLength > 10 * 1024 * 1024) {
+      return {
+        body: response.Body,
+        metadata: { contentLength },
+        isStream: true
+      };
+    }
+
+    // Small files: buffer fully, extract prepended IV (first 16 bytes)
     const chunks = [];
     for await (const chunk of response.Body) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
 
     const fullData = Buffer.concat(chunks);
-    
-    // Extract prepended IV (first 16 bytes)
-    const iv = fullData.slice(0, 16);
-    const ciphertext = fullData.slice(16);
 
     if (fullData.length < 16) {
       throw new Error('File corruption: IV missing');
     }
 
-    // For large files, return as stream
-    if (response.ContentLength > 10 * 1024 * 1024) {
-      return { 
-        body: response.Body, 
-        metadata: { iv }, 
-        isStream: true 
-      };
-    }
+    const iv = fullData.slice(0, 16);
+    const ciphertext = fullData.slice(16);
 
-    return { 
-      body: ciphertext, 
-      metadata: { iv }, 
-      isStream: false 
+    return {
+      body: ciphertext,
+      metadata: { iv },
+      isStream: false
     };
   } catch (err) {
     console.error('[downloadFromS3]', err.message);
