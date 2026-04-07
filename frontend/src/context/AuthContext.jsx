@@ -1,6 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { authService } from '../services/authService';
-import { initCSRFToken } from '../services/api';
 
 export const AuthContext = createContext();
 
@@ -12,9 +11,6 @@ export const AuthProvider = ({ children }) => {
   // Check authentication status on mount
   const checkAuth = useCallback(async () => {
     try {
-      // Initialize CSRF token first
-      await initCSRFToken();
-      
       // Try to get current user (will fail with 401 if no valid cookie)
       const data = await authService.getMe();
       setUser(data.user);
@@ -37,8 +33,6 @@ export const AuthProvider = ({ children }) => {
     // Token is stored in httpOnly cookie automatically by backend
     setUser(data.user);
     setIsAuthenticated(true);
-    // Fetch CSRF token after login
-    await initCSRFToken();
   };
 
   const register = async (email, password, fullName) => {
@@ -46,8 +40,6 @@ export const AuthProvider = ({ children }) => {
     // Token is stored in httpOnly cookie automatically by backend
     setUser(data.user);
     setIsAuthenticated(true);
-    // Fetch CSRF token after registration
-    await initCSRFToken();
   };
 
   const logout = useCallback(async () => {

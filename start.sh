@@ -42,7 +42,7 @@ echo "--- Starting VaultIQ Ecosystem ---"
 
 # 1. AI Service (Port 8001)
 echo "[AI] Starting VaultIQ AI Service..."
-cd ai-service
+cd ai_service
 if [ -d "venv" ]; then
     ./venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT_AI:-8001} > server.log 2>&1 &
     AI_PID=$!

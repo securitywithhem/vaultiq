@@ -20,10 +20,11 @@ router.post('/check', authenticateToken, validate(checkSchema), async (req, res)
   try {
     const { text } = req.body;
 
-    const response = await fetch(`${AI_SERVICE_URL}/plagiarism/check`, {
+    // AI service /detect endpoint requires both text and document_id
+    const response = await fetch(`${AI_SERVICE_URL}/detect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, document_id: req.id || 'plagiarism-check' }),
       timeout: 30000 // 30s timeout for AI processing
     });
 
@@ -46,10 +47,11 @@ router.post('/add', authenticateToken, validate(addSchema), async (req, res) => 
   try {
     const { doc_id, text } = req.body;
 
-    const response = await fetch(`${AI_SERVICE_URL}/plagiarism/add`, {
+    // AI service corpus endpoint expects doc_id, text, and optional title
+    const response = await fetch(`${AI_SERVICE_URL}/corpus/add`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doc_id, text }),
+      body: JSON.stringify({ doc_id, text, title: '' }),
       timeout: 15000
     });
 

@@ -20,14 +20,15 @@ const PlagiarismChecker = () => {
 
     try {
       const data = await checkPlagiarism(inputText);
-      
-      // Map AI service response to UI format
+
+      // AI service returns DetectionResponse: { plagiarism: { score, verdict, matched_segments }, ... }
+      const plag = data.plagiarism || {};
       setResult({
-        score: Math.round(data.cosine_score * 100),
-        verdict: data.verdict,
-        matches: data.matches.map(m => ({
-          url: `Matched Segment: "${m.matched_sentence.substring(0, 30)}..."`,
-          similarity: `${Math.round(m.similarity * 100)}%`
+        score: Math.round((plag.score || 0) * 100),
+        verdict: plag.verdict || 'CLEAN',
+        matches: (plag.matched_segments || []).map(m => ({
+          url: `Matched Segment: "${(m.text || '').substring(0, 30)}..."`,
+          similarity: `${Math.round((m.similarity || 0) * 100)}%`
         }))
       });
     } catch (err) {
