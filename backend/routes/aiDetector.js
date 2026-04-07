@@ -18,23 +18,6 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8001';
 
-// ─── POST /train ────────────────────────────────────────────────────
-router.post('/train', authenticateToken, async (req, res) => {
-  try {
-    const response = await fetch(`${AI_SERVICE_URL}/train`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 60000 // Training can take time
-    });
-
-    const data = await response.json();
-    return res.status(response.status).json(data);
-  } catch (err) {
-    logger.error('AI train error', { requestId: req.id, error: err.message });
-    return res.status(502).json({ error: 'AI Service connection failed' });
-  }
-});
-
 // ─── POST /check (file upload) ──────────────────────────────────────
 router.post('/check', authenticateToken, upload.single('file'), async (req, res) => {
   try {
@@ -48,7 +31,8 @@ router.post('/check', authenticateToken, upload.single('file'), async (req, res)
       contentType: req.file.mimetype
     });
 
-    const response = await fetch(`${AI_SERVICE_URL}/detect`, {
+    // AI service file detection endpoint is /detect/file (not /detect)
+    const response = await fetch(`${AI_SERVICE_URL}/detect/file`, {
       method: 'POST',
       body: form,
       headers: form.getHeaders(),
@@ -68,10 +52,11 @@ router.post('/check-text', authenticateToken, validate(checkTextSchema), async (
   try {
     const { text } = req.body;
 
-    const response = await fetch(`${AI_SERVICE_URL}/detect-text`, {
+    // AI service text detection endpoint is /detect (not /detect-text)
+    const response = await fetch(`${AI_SERVICE_URL}/detect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, document_id: req.id || 'text-check' }),
       timeout: 30000
     });
 
@@ -91,13 +76,12 @@ router.get('/status', async (req, res) => {
     return res.status(200).json({
       data: {
         online: true,
-        model_trained: data.model_trained || false,
-        training_report: data.training_report || null
+        models_loaded: data.models_loaded || false,
       }
     });
   } catch {
     return res.status(200).json({
-      data: { online: false, model_trained: false }
+      data: { online: false, models_loaded: false }
     });
   }
 });

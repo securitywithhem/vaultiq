@@ -34,3 +34,18 @@ yarn-error.log*
 backend/logs/
 backend/uploads/
 frontend/output.txt
+
+# Python virtual environments
+venv/
+.venv/
+ai_service/venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Other AI tool configs (not needed in repo)
+.cursorrules
+.windsurfrules
+.opencode.json
+.cursor/
+GEMINI.md

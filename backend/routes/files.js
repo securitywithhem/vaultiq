@@ -290,7 +290,7 @@ router.delete('/:id', authenticateToken, validate(fileIdParams), async (req, res
     // IDOR protection: filter by user_id at query level
     const { data: file, error: fetchError } = await supabaseAdmin
       .from('files')
-      .select('id, user_id, filename, s3_key')
+      .select('id, user_id, filename, s3_key, file_size')
       .eq('id', req.params.id)
       .eq('user_id', req.user.id)
       .single();

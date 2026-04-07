@@ -17,7 +17,7 @@ const s3Client = new S3Client({
 
 const getBucket = () => process.env.S3_BUCKET_NAME;
 
-async function uploadToS3(key, buffer, mimeType, iv) {
+async function uploadToS3(key, buffer, mimeType) {
   try {
     const command = new PutObjectCommand({
       Bucket: getBucket(),
