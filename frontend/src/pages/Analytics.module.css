@@ -1,176 +1,502 @@
+/* ==========================================================================
+   Analytics.module.css
+   All colours reference CSS custom properties from global.css.
+   No hardcoded hex values — hex only appears in Recharts fill= props (JSX).
+   ========================================================================== */
+
+/* ── Page shell ────────────────────────────────────────────────────────────── */
+
 .page {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background: var(--bg-primary);
 }
 
 .main {
-  flex: 1;
-  max-width: 1280px;
+  max-width: 1100px;
   width: 100%;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 1.5rem;
+  flex: 1;
 }
 
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
 .header {
-  margin-bottom: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .titleRow {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
-  gap: 20px;
 }
 
 .title {
-  font-size: 2rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Badges ─────────────────────────────────────────────────────────────────── */
+
+.badgeLive {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  white-space: nowrap;
+}
+
+.badgeDanger {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--accent-red);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  white-space: nowrap;
+}
+
+/* ── Primary button ─────────────────────────────────────────────────────────── */
+
+.primaryBtn {
+  padding: 8px 20px;
+  background: var(--accent-blue);
+  color: var(--text-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.primaryBtn:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.primaryBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Time-range filter bar ────────────────────────────────────────────────── */
+
+.rangeBar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1.25rem;
+}
+
+.rangeBtn {
+  padding: 5px 14px;
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.rangeBtn:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+.rangeBtnActive {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+/* ── Skeleton / shimmer ───────────────────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface)   25%,
+    var(--bg-elevated)  50%,
+    var(--bg-surface)   75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+
+@keyframes shimmer {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Error state ─────────────────────────────────────────────────────────── */
+
+.errorBox {
+  padding: 1.5rem;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-md);
+  margin-top: 0.5rem;
+}
+
+.errorTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-red);
+  margin-bottom: 4px;
+}
+
+.errorMsg {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ── Empty / no-data state ───────────────────────────────────────────────── */
+
+.emptyBox {
+  padding: 2.5rem 2rem;
+  text-align: center;
+  background: var(--bg-surface);
+  border: 1px dashed var(--bg-border);
+  border-radius: var(--radius-lg);
+  margin-top: 0.5rem;
+}
+
+.emptyTitle {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 8px;
 }
 
-.subtitle {
+.emptyMsg {
+  font-size: 13px;
   color: var(--text-secondary);
-  font-size: 1.125rem;
+  margin-bottom: 14px;
 }
 
-.refreshButton {
-  padding: 10px 24px;
-  background: var(--accent-blue);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  font-family: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
-}
-
-.refreshButton:hover:not(:disabled) {
-  opacity: 0.9;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
-}
-
-.refreshButton:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.refreshButton:disabled {
-  background: var(--bg-border);
-  box-shadow: none;
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.loaderArea {
-  height: 400px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.errorState {
-  padding: 24px;
-  background-color: rgba(239, 68, 68, 0.1);
-  color: var(--accent-red);
-  border: 1px dashed rgba(239, 68, 68, 0.3);
-  border-radius: var(--radius-md);
-  text-align: center;
-}
-
-.kpiGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 24px;
-  margin-bottom: 32px;
-}
-
-@media (min-width: 768px) {
-  .kpiGrid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.kpiCard {
-  background-color: var(--bg-surface);
-  border: 1px solid var(--bg-border);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.kpiIconWrapper {
-  width: 56px;
-  height: 56px;
-  background-color: rgba(59, 130, 246, 0.1);
-  color: var(--accent-blue);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.kpiIconWrapper svg {
-  width: 28px;
-  height: 28px;
-}
-
-.iconGreen {
-  background-color: rgba(16, 185, 129, 0.1);
+.codeBlock {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-elevated);
   color: var(--accent-green);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  margin: 0 auto 14px;
+  word-break: break-all;
+  text-align: left;
+  max-width: 640px;
 }
 
-.kpiValue {
-  font-size: 2rem;
+.copyBtn {
+  padding: 6px 16px;
+  background: transparent;
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.copyBtn:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+/* ── Metrics grid (4 cards) ────────────────────────────────────────────────── */
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 900px) {
+  .metricsGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .metricsGrid { grid-template-columns: 1fr; }
+}
+
+.metricCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: var(--transition);
+}
+
+.metricCardDanger {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.metricIcon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.metricValue {
+  font-size: 1.35rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-primary);
   line-height: 1.2;
 }
 
-.kpiLabel {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  margin-top: 4px;
+.metricLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
 }
 
-.chartsGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 24px;
-  margin-bottom: 24px;
-}
+/* ── Chart cards ─────────────────────────────────────────────────────────── */
 
-@media (min-width: 1024px) {
-  .chartsGrid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.chartSection {
-  background-color: var(--bg-surface);
+.chartCard {
+  background: var(--bg-surface);
   border: 1px solid var(--bg-border);
-  border-radius: var(--radius-lg);
-  padding: 24px;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 12px;
 }
 
-.chartSection h2 {
-  font-size: 1.125rem;
-  margin-bottom: 24px;
+.chartTitle {
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text-primary);
+  margin-bottom: 4px;
 }
 
-.chartContainer {
-  height: 300px;
-  width: 100%;
+.chartSub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
 }
 
-.fullWidth {
-  margin-top: 24px;
+.redLabel {
+  color: var(--accent-red);
+  font-weight: 500;
+}
+
+/* ── Two-column layout ─────────────────────────────────────────────────────── */
+
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Cancel the chartCard bottom margin when nested in twoCol */
+.twoCol > .chartCard {
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .twoCol { grid-template-columns: 1fr; }
+}
+
+/* ── Pie chart custom legend ────────────────────────────────────────────────── */
+
+.pieLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bg-border);
+}
+
+.pieLegendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pieDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pieLegendLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  text-transform: capitalize;
+}
+
+.pieLegendCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Anomaly alerts ──────────────────────────────────────────────────────── */
+
+.anomalyHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.anomalyList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.anomalyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(239, 68, 68, 0.14);
+  border-radius: var(--radius-sm);
+}
+
+.redDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  flex-shrink: 0;
+}
+
+.anomalyUser {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.anomalyCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-red);
+  white-space: nowrap;
+}
+
+.anomalyDate {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Infrastructure status grid (6 cards) ───────────────────────────────── */
+
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .statusGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .statusGrid { grid-template-columns: 1fr; }
+}
+
+.statusCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotGreen {
+  background: var(--accent-green);
+  box-shadow: 0 0 7px var(--accent-green);
+}
+
+.dotRed {
+  background: var(--accent-red);
+  box-shadow: 0 0 7px var(--accent-red);
+}
+
+.statusLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.statusValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: 3px;
 }

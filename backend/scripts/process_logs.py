@@ -1,129 +1,242 @@
-import os
+"""
+VaultIQ — Python MapReduce-style Analytics Fallback
+====================================================
+Used when Spark is not running.  Reads all event logs from the
+Supabase `event_logs` table, computes the same 7 analytics as the
+PySpark job using plain Python dicts/Counters, and writes each result
+to  backend/analytics_cache/{name}.json.
+
+Dependencies
+------------
+    pip install supabase python-dotenv
+
+Usage
+-----
+    python scripts/process_logs.py
+"""
+
 import json
-import requests
-from datetime import datetime
-from collections import Counter
+import logging
+import os
+import sys
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
 
-def get_env_var(name, default=None):
-    return os.environ.get(name, default)
+from dotenv import load_dotenv
+from supabase import Client, create_client
 
-# Configuration
-HDFS_BASE_URL = get_env_var("HDFS_WEBHDFS_URL", "http://localhost:9870/webhdfs/v1")
-SUPABASE_URL = get_env_var("SUPABASE_URL")
-SUPABASE_KEY = get_env_var("SUPABASE_SERVICE_KEY")
+# ─── Bootstrap ────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+log = logging.getLogger(__name__)
 
-def fetch_hdfs_logs():
-    """Fetch all log files from HDFS /vaultiq/logs/"""
-    logs = []
-    try:
-        list_url = f"{HDFS_BASE_URL}/vaultiq/logs?op=LISTSTATUS"
-        response = requests.get(list_url, timeout=5)
-        if response.status_code == 200:
-            files = response.json().get("FileStatuses", {}).get("FileStatus", [])
-            for f in files:
-                if f["type"] == "FILE" and f["pathSuffix"].endswith("_event.json"):
-                    # Open and read each file
-                    read_url = f"{HDFS_BASE_URL}/vaultiq/logs/{f['pathSuffix']}?op=OPEN"
-                    file_res = requests.get(read_url, timeout=5, allow_redirects=True)
-                    if file_res.status_code == 200:
-                        try:
-                            logs.append(file_res.json())
-                        except:
-                            pass
-    except Exception as e:
-        print(f"[fetch_hdfs_logs] Error: {e}")
-    return logs
+_THIS_DIR  = Path(__file__).parent
+_CACHE_DIR = _THIS_DIR.parent / "analytics_cache"
 
-def fetch_supabase_fallback_logs():
-    """Fetch logs from Supabase system_logs table"""
-    logs = []
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return logs
-    
-    try:
-        url = f"{SUPABASE_URL}/rest/v1/system_logs?select=payload"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            for entry in data:
-                logs.append(entry.get("payload", {}))
-    except Exception as e:
-        print(f"[fetch_supabase_logs] Error: {e}")
-    return logs
+load_dotenv(_THIS_DIR.parent / ".env")
 
-def process_logs():
-    print(f"[{datetime.now()}] Starting log processing...")
-    
-    # Map Phase: Collect all entries
-    hdfs_entries = fetch_hdfs_logs()
-    supabase_entries = fetch_supabase_fallback_logs()
-    all_entries = hdfs_entries + supabase_entries
-    
-    print(f"Collected {len(hdfs_entries)} from HDFS and {len(supabase_entries)} from Supabase.")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
-    # Reduce Phase: Aggregate metrics
-    user_counts = Counter()
-    mime_counts = Counter()
-    event_counts = Counter()
-    total_size = 0
-    recent_uploads = []
+if not SUPABASE_URL or not SUPABASE_KEY:
+    log.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set.")
+    sys.exit(1)
 
-    for entry in all_entries:
-        user_id = entry.get("user_id", "anonymous")
-        event = entry.get("event", "unknown")
-        file_size = entry.get("file_size", 0)
-        filename = entry.get("filename", "unknown")
-        
-        # Aggregate bytes for successful uploads
-        if event == "upload":
-            total_size += file_size
-            user_counts[user_id] += 1
-            
-            # Extract extension/mime
-            ext = os.path.splitext(filename)[1].lower() or ".unknown"
-            mime_counts[ext] += 1
-            
-            # Track for trajectory chart
-            recent_uploads.append({
-                "user_id": user_id,
-                "file_size": file_size,
-                "uploaded_at": entry.get("timestamp")
+
+# ─── Fetch ────────────────────────────────────────────────────────────────────
+
+def fetch_all_logs(client: Client) -> list[dict]:
+    """
+    Page through the entire event_logs table and return a flat list
+    of normalised event dicts.
+
+    Each row's top-level columns take precedence; the embedded `payload`
+    JSON is used as fallback for fields (especially `timestamp`) that
+    are not promoted to top-level columns in the DB schema.
+    """
+    logs: list[dict] = []
+    page_size        = 1000
+    offset           = 0
+
+    while True:
+        resp = (
+            client.table("event_logs")
+                  .select("event_type, user_id, filename, file_size, ip, payload")
+                  .range(offset, offset + page_size - 1)
+                  .execute()
+        )
+
+        rows = resp.data or []
+        if not rows:
+            break
+
+        for row in rows:
+            payload = row.get("payload") or {}
+            if isinstance(payload, str):          # Supabase may return raw JSON string
+                try:
+                    payload = json.loads(payload)
+                except json.JSONDecodeError:
+                    payload = {}
+
+            logs.append({
+                "event":     row.get("event_type")  or payload.get("event"),
+                "user_id":   row.get("user_id")     or payload.get("user_id"),
+                "filename":  row.get("filename")    or payload.get("filename"),
+                "file_size": row.get("file_size")   or payload.get("file_size") or 0,
+                "timestamp": payload.get("timestamp"),          # ms epoch
+                "ip":        row.get("ip")          or payload.get("ip"),
             })
 
-        event_counts[event] += 1
+        if len(rows) < page_size:
+            break
+        offset += page_size
 
-    # Sort recent uploads by date and limit
-    recent_uploads.sort(key=lambda x: x.get("uploaded_at") or "", reverse=True)
-    
-    analytics_result = {
-        "totalFiles": event_counts.get("upload", 0),
-        "totalStorage": total_size,
-        "eventDistribution": dict(event_counts),
-        "userActivity": dict(user_counts),
-        "fileTypeDistribution": [{"name": k, "value": v} for k, v in mime_counts.items()],
-        "recentUploads": recent_uploads[:20],
-        "lastUpdated": datetime.now().isoformat()
-    }
+    log.info("Fetched %d event log rows from Supabase.", len(logs))
+    return logs
 
-    # Write back to HDFS results/analytics.json
+
+# ─── Timestamp helpers ────────────────────────────────────────────────────────
+
+def _ts_to_dt(ts_ms) -> datetime | None:
+    """Convert a millisecond epoch (int or float) to a UTC datetime."""
     try:
-        output_path = "/vaultiq/results/analytics.json"
-        create_url = f"{HDFS_BASE_URL}{output_path}?op=CREATE&overwrite=true"
-        res = requests.put(create_url, timeout=5)
-        
-        if res.status_code == 307:
-            redirect_url = res.headers.get('location')
-            write_res = requests.put(redirect_url, data=json.dumps(analytics_result), headers={'Content-Type': 'application/json'})
-            if write_res.status_code in [200, 201]:
-                print("Successfully updated analytics.json in HDFS")
-            else:
-                print(f"Failed to write data to HDFS: {write_res.status_code}")
-    except Exception as e:
-        print(f"Error writing analytics to HDFS: {e}")
+        return datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _date_str(ts_ms) -> str:
+    dt = _ts_to_dt(ts_ms)
+    return dt.strftime("%Y-%m-%d") if dt else "unknown"
+
+
+def _hour(ts_ms) -> int | None:
+    dt = _ts_to_dt(ts_ms)
+    return dt.hour if dt else None
+
+
+# ─── Analytics (Map-Reduce style) ────────────────────────────────────────────
+
+def analytic_daily_trend(logs: list[dict]) -> list[dict]:
+    """ANALYTIC 1: uploads per calendar day."""
+    counts: Counter = Counter()
+    for row in logs:
+        if row["event"] == "upload":
+            counts[_date_str(row["timestamp"])] += 1
+    return sorted(
+        [{"date": d, "uploads": c} for d, c in counts.items()],
+        key=lambda x: x["date"],
+    )
+
+
+def analytic_top_files(logs: list[dict]) -> list[dict]:
+    """ANALYTIC 2: top 10 most-downloaded filenames."""
+    counts: Counter = Counter()
+    for row in logs:
+        if row["event"] == "download" and row.get("filename"):
+            counts[row["filename"]] += 1
+    return [
+        {"filename": fn, "downloads": cnt}
+        for fn, cnt in counts.most_common(10)
+    ]
+
+
+def analytic_user_storage(logs: list[dict]) -> list[dict]:
+    """ANALYTIC 3: total bytes uploaded + file count per user."""
+    totals: dict[str, dict] = defaultdict(lambda: {"total_bytes": 0, "file_count": 0})
+    for row in logs:
+        if row["event"] == "upload" and row.get("user_id"):
+            uid = row["user_id"]
+            totals[uid]["total_bytes"] += int(row.get("file_size") or 0)
+            totals[uid]["file_count"]  += 1
+    return [
+        {"user_id": uid, **stats}
+        for uid, stats in totals.items()
+    ]
+
+
+def analytic_event_breakdown(logs: list[dict]) -> list[dict]:
+    """ANALYTIC 4: row count per event type."""
+    counts: Counter = Counter(
+        row["event"] for row in logs if row.get("event")
+    )
+    return [{"event": ev, "count": cnt} for ev, cnt in counts.items()]
+
+
+def analytic_hourly_pattern(logs: list[dict]) -> list[dict]:
+    """ANALYTIC 5: total events per hour-of-day (0–23)."""
+    counts: Counter = Counter()
+    for row in logs:
+        h = _hour(row["timestamp"])
+        if h is not None:
+            counts[h] += 1
+    return sorted(
+        [{"hour": h, "events": c} for h, c in counts.items()],
+        key=lambda x: x["hour"],
+    )
+
+
+def analytic_platform_totals(logs: list[dict]) -> list[dict]:
+    """ANALYTIC 6: single-row platform-wide summary."""
+    total_events         = len(logs)
+    active_users         = len({r["user_id"] for r in logs if r.get("user_id")})
+    total_bytes_uploaded = sum(
+        int(r.get("file_size") or 0)
+        for r in logs if r["event"] == "upload"
+    )
+    return [{
+        "total_events":         total_events,
+        "active_users":         active_users,
+        "total_bytes_uploaded": total_bytes_uploaded,
+    }]
+
+
+def analytic_anomalies(logs: list[dict]) -> list[dict]:
+    """
+    ANALYTIC 7: users with >5 off-hours events (22:00–06:00) on a single day.
+    """
+    counts: Counter = Counter()
+    for row in logs:
+        h = _hour(row["timestamp"])
+        if h is not None and (h >= 22 or h <= 6) and row.get("user_id"):
+            key = (row["user_id"], _date_str(row["timestamp"]))
+            counts[key] += 1
+    return [
+        {"user_id": uid, "date": date, "off_hours_events": cnt}
+        for (uid, date), cnt in counts.items()
+        if cnt > 5
+    ]
+
+
+# ─── Write helper ─────────────────────────────────────────────────────────────
+
+def write_cache(name: str, data: list[dict]) -> None:
+    """Write analytics result to backend/analytics_cache/{name}.json."""
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = _CACHE_DIR / f"{name}.json"
+    out_path.write_text(json.dumps(data, indent=2, default=str))
+    log.info("Wrote %-20s → %s  (%d rows)", name, out_path, len(data))
+
+
+# ─── Entry point ──────────────────────────────────────────────────────────────
+
+def main() -> None:
+    client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    logs   = fetch_all_logs(client)
+
+    if not logs:
+        log.warning("No logs found in event_logs table — writing empty caches.")
+
+    write_cache("daily_trend",      analytic_daily_trend(logs))
+    write_cache("top_files",        analytic_top_files(logs))
+    write_cache("user_storage",     analytic_user_storage(logs))
+    write_cache("event_breakdown",  analytic_event_breakdown(logs))
+    write_cache("hourly_pattern",   analytic_hourly_pattern(logs))
+    write_cache("platform_totals",  analytic_platform_totals(logs))
+    write_cache("anomalies",        analytic_anomalies(logs))
+
+    print("SUCCESS: process_logs complete")
+
 
 if __name__ == "__main__":
-    process_logs()
+    main()

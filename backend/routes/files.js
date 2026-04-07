@@ -161,7 +161,8 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       user_id: req.user.id,
       filename: sanitizedFilename,
       file_size: req.file.size,
-      s3_key: s3Key
+      timestamp: Date.now(),
+      ip: req.ip
     });
 
     logger.info('File uploaded', { requestId: req.id, fileId: fileRecord.id, size: req.file.size });
@@ -244,8 +245,8 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
         user_id: req.user.id,
         filename: file.filename,
         file_size: file.file_size,
-        s3_key: file.s3_key,
-        mode: 'stream'
+        timestamp: Date.now(),
+        ip: req.ip
       });
 
       return; // Response handled by pipe
@@ -272,8 +273,8 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
       user_id: req.user.id,
       filename: file.filename,
       file_size: file.file_size,
-      s3_key: file.s3_key,
-      mode: 'buffer'
+      timestamp: Date.now(),
+      ip: req.ip
     });
 
     return res.send(plaintext);
@@ -314,7 +315,9 @@ router.delete('/:id', authenticateToken, validate(fileIdParams), async (req, res
       event: 'delete',
       user_id: req.user.id,
       filename: file.filename,
-      s3_key: file.s3_key
+      file_size: file.file_size,
+      timestamp: Date.now(),
+      ip: req.ip
     });
 
     logger.info('File deleted', { requestId: req.id, fileId: file.id });
