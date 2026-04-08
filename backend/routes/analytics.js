@@ -1,185 +1,172 @@
 /**
  * @file analytics.js
- * @description Reads 7 Spark analytics result folders from HDFS via WebHDFS,
- *              with automatic per-analytic fallback to analytics_cache/ JSON files.
+ * @description Analytics API — 3-tier reading strategy:
+ *   1. HDFS  (analytics_latest.json via WebHDFS OPEN)
+ *   2. Local bigdata/results/analytics_latest.json
+ *   3. Supabase event_logs (basic live counts)
  *
- * WebHDFS two-step read pattern:
- *   1. GET /folder?op=LISTSTATUS  → list files, find the "part-" file
- *   2. GET /file?op=OPEN          → axios follows the 307 DataNode redirect automatically
- *   3. Split text by '\n'         → parse each non-empty line as JSON
- *
- * Response shape:
- *   { daily_trend, top_files, user_storage, event_breakdown,
- *     hourly_pattern, platform_totals, anomalies, _source }
+ * GET  /api/analytics         — returns full analytics payload
+ * POST /api/analytics/trigger — spawns bigdata/run_analytics.sh in background
  */
 
 const express    = require('express');
 const axios      = require('axios');
 const fs         = require('fs');
 const path       = require('path');
-const { execFile } = require('child_process');
+const { spawn }  = require('child_process');
 const { authenticateToken } = require('../middleware/auth');
 const logger     = require('../utils/logger');
 
 const router = express.Router();
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-// HDFS_WEBHDFS_URL already includes /webhdfs/v1  (e.g. http://namenode:9870/webhdfs/v1)
-const HDFS_BASE = process.env.HDFS_WEBHDFS_URL || 'http://localhost:9870/webhdfs/v1';
-const HDFS_USER = process.env.HDFS_USER        || 'root';
-const CACHE_DIR = path.resolve(__dirname, '../analytics_cache');
-const RESULTS   = '/vaultiq/results';
 
-const ANALYTICS = [
-  'daily_trend',
-  'top_files',
-  'user_storage',
-  'event_breakdown',
-  'hourly_pattern',
-  'platform_totals',
-  'anomalies',
-];
+const HDFS_BASE  = process.env.HDFS_WEBHDFS_URL || 'http://localhost:9870/webhdfs/v1';
+const HDFS_USER  = process.env.HDFS_USER        || 'root';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// ─── WebHDFS reader ───────────────────────────────────────────────────────────
+// Paths relative to this file: backend/routes/analytics.js
+// ../../bigdata/results  →  <project_root>/bigdata/results
+const LOCAL_RESULTS_FILE = path.resolve(__dirname, '../../bigdata/results/analytics_latest.json');
+const SCRIPT_PATH        = path.resolve(__dirname, '../../bigdata/run_analytics.sh');
 
-/**
- * Read one Spark results folder from HDFS and return its rows as an array.
- *
- * Throws on any HDFS / network error so the caller can fall through to cache.
- *
- * @param {string} name  e.g. "daily_trend"
- * @returns {Promise<Object[]>}
- */
-async function readHDFSFolder(name) {
-  const folderPath = `${RESULTS}/${name}`;
-  const user       = encodeURIComponent(HDFS_USER);
+// ─── Tier 1 — HDFS ───────────────────────────────────────────────────────────
 
-  // Step 1: LISTSTATUS — list the folder contents
-  const listUrl = `${HDFS_BASE}${folderPath}?op=LISTSTATUS&user.name=${user}`;
-  const listRes = await axios.get(listUrl, { timeout: 8_000 });
+async function readFromHDFS() {
+  const hdfsPath = '/vaultiq/results/analytics_latest.json';
+  const user     = encodeURIComponent(HDFS_USER);
+  const openUrl  = `${HDFS_BASE}${hdfsPath}?op=OPEN&user.name=${user}`;
 
-  const files    = listRes.data?.FileStatuses?.FileStatus || [];
-  const partFile = files.find(f => String(f.pathSuffix).startsWith('part-'));
-
-  if (!partFile) {
-    logger.warn(`[analytics] No part- file in HDFS folder ${folderPath}`);
-    return [];
-  }
-
-  // Step 2: OPEN — axios follows the 307 DataNode redirect automatically
-  const openUrl = `${HDFS_BASE}${folderPath}/${partFile.pathSuffix}?op=OPEN&user.name=${user}`;
-  const fileRes = await axios.get(openUrl, {
+  const res = await axios.get(openUrl, {
     timeout:      10_000,
     maxRedirects: 5,
-    responseType: 'text',   // raw text, NOT parsed JSON (content is newline-delimited)
+    responseType: 'text',
   });
 
-  // Step 3: parse newline-delimited JSON
-  return fileRes.data
-    .split('\n')
-    .filter(line => line.trim().length > 0)
-    .map(line => JSON.parse(line));
+  return JSON.parse(res.data);
 }
 
-// ─── Local cache reader ───────────────────────────────────────────────────────
+// ─── Tier 2 — Local file ──────────────────────────────────────────────────────
 
-/**
- * Read one analytic from analytics_cache/{name}.json (written by process_logs.py).
- * Returns null if the file is missing or unparseable — caller uses [] instead.
- *
- * @param {string} name
- * @returns {Object[]|null}
- */
-function readCache(name) {
-  try {
-    const raw = fs.readFileSync(path.join(CACHE_DIR, `${name}.json`), 'utf8');
-    return JSON.parse(raw);
-  } catch {
-    return null;
+function readFromLocal() {
+  const raw = fs.readFileSync(LOCAL_RESULTS_FILE, 'utf8');
+  return JSON.parse(raw);
+}
+
+// ─── Tier 3 — Supabase live counts ───────────────────────────────────────────
+
+async function readFromSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Supabase env vars not configured');
   }
+
+  const res = await axios.get(`${SUPABASE_URL}/rest/v1/event_logs`, {
+    params:  { select: 'event_type', limit: 50000 },
+    headers: {
+      apikey:        SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+    },
+    timeout: 15_000,
+  });
+
+  // Group-count in JS
+  const counts = {};
+  for (const row of res.data) {
+    const et = row.event_type || 'unknown';
+    counts[et] = (counts[et] || 0) + 1;
+  }
+
+  return {
+    generated_at:    new Date().toISOString(),
+    daily_activity:  { dates: [], uploads: [], downloads: [], detections: [], total_bytes_per_day: [] },
+    anomaly_detection: { delete_spikes: [], suspicious_users: [] },
+    ai_usage_stats:  { verdict_counts: {}, avg_score_by_type: {}, top_file_types: [] },
+    storage_analytics: { top_uploaders: [], file_type_distribution: [] },
+    latency_analysis:  { avg_latency_by_type: {}, p95_latency: {}, busiest_hours: [] },
+    user_behaviour:    { daily_active_users: [], returning_users_count: 0, common_sequences: [] },
+    _live_counts: counts,
+  };
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
 
 router.get('/', authenticateToken, async (req, res) => {
-  const raw    = {};
-  let   hdfsUp = false;
+  res.set('Cache-Control', 'max-age=300');
 
-  // Fetch all 7 folders in parallel.
-  // Each task writes into `raw` on success, leaves null on failure.
-  // We never let one failure abort the others (Promise.all + individual catch).
-  const tasks = ANALYTICS.map(name =>
-    readHDFSFolder(name)
-      .then(data => {
-        raw[name] = data;
-        hdfsUp    = true;           // at least one folder was reachable
-      })
-      .catch(err => {
-        raw[name] = null;           // will be replaced by cache below
-        logger.warn(`[analytics] HDFS read failed for "${name}": ${err.message}`);
-      })
-  );
-
-  await Promise.all(tasks);
-
-  // For every folder that failed, try the local cache as fallback
-  for (const name of ANALYTICS) {
-    if (raw[name] === null) {
-      const cached = readCache(name);
-      if (cached) {
-        logger.info(`[analytics] Using cache fallback for "${name}"`);
-      }
-      raw[name] = cached || [];
+  // Tier 1 — HDFS
+  if (HDFS_BASE) {
+    try {
+      const data = await readFromHDFS();
+      logger.info('[analytics] Served from HDFS', { requestId: req.id });
+      return res.status(200).json({ source: 'hdfs', ...data });
+    } catch (err) {
+      logger.warn('[analytics] HDFS read failed, trying local cache', {
+        requestId: req.id,
+        error:     err.message,
+      });
     }
   }
 
-  // platform_totals is written by Spark as a single-element array (.coalesce(1)).
-  // Unwrap it here so the frontend receives a plain object, not a one-item array.
-  const ptArr = raw.platform_totals;
-  const platform_totals = Array.isArray(ptArr) && ptArr.length > 0
-    ? ptArr[0]
-    : { total_events: 0, active_users: 0, total_bytes_uploaded: 0 };
+  // Tier 2 — local file
+  try {
+    const data = readFromLocal();
+    logger.info('[analytics] Served from local cache', { requestId: req.id });
+    return res.status(200).json({ source: 'local_cache', ...data });
+  } catch (err) {
+    logger.warn('[analytics] Local cache read failed, trying Supabase', {
+      requestId: req.id,
+      error:     err.message,
+    });
+  }
 
-  return res.status(200).json({
-    daily_trend:     raw.daily_trend     || [],
-    top_files:       raw.top_files       || [],
-    user_storage:    raw.user_storage    || [],
-    event_breakdown: raw.event_breakdown || [],
-    hourly_pattern:  raw.hourly_pattern  || [],
-    platform_totals,
-    anomalies:       raw.anomalies       || [],
-    // Internal field: lets the frontend show which data source is active
-    _source: hdfsUp ? 'hdfs' : 'cache',
+  // Tier 3 — Supabase
+  try {
+    const data = await readFromSupabase();
+    logger.info('[analytics] Served from Supabase live counts', { requestId: req.id });
+    return res.status(200).json({ source: 'supabase_live', ...data });
+  } catch (err) {
+    logger.error('[analytics] All 3 tiers failed', {
+      requestId: req.id,
+      error:     err.message,
+    });
+  }
+
+  return res.status(503).json({
+    error: 'Analytics service unavailable. Run the analytics job or check your HDFS connection.',
   });
 });
 
-// ─── POST /refresh ────────────────────────────────────────────────────────────
-// Triggers the Python MapReduce fallback (process_logs.py) in the background.
-// For the full Spark job, run: docker exec spark-master spark-submit ...
+// ─── POST /trigger ────────────────────────────────────────────────────────────
 
-router.post('/refresh', authenticateToken, async (req, res) => {
-  const scriptPath = path.resolve(__dirname, '../scripts/process_logs.py');
+router.post('/trigger', authenticateToken, (req, res) => {
+  logger.info('[analytics] Triggering analytics job', { requestId: req.id });
 
-  try {
-    // execFile is safe from shell injection — arguments are never interpolated
-    execFile('python3', [scriptPath], {
-      env:     { ...process.env },
-      timeout: 120_000,
-    }, (err, stdout, stderr) => {
-      if (err) {
-        logger.error('[analytics] process_logs.py failed', {
-          error: (stderr || err.message).slice(0, 300),
-        });
-        return;
-      }
-      logger.info('[analytics] process_logs.py complete', { output: stdout.trim().slice(0, 200) });
-    });
+  // spawn is safe from shell injection — arguments are never interpolated
+  const child = spawn('bash', [SCRIPT_PATH], {
+    env:      { ...process.env },
+    detached: true,
+    stdio:    ['ignore', 'pipe', 'pipe'],
+  });
 
-    return res.status(202).json({ data: { message: 'Analytics refresh started in background' } });
-  } catch (err) {
-    logger.error('[analytics] refresh route error', { requestId: req.id, error: err.message });
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+  child.stdout.on('data', d =>
+    logger.info('[analytics/trigger] stdout: ' + d.toString().trim())
+  );
+  child.stderr.on('data', d =>
+    logger.warn('[analytics/trigger] stderr: ' + d.toString().trim())
+  );
+
+  child.on('error', err =>
+    logger.error('[analytics/trigger] spawn error', { error: err.message })
+  );
+
+  // Unref so the process can outlive the request
+  child.unref();
+
+  return res.status(202).json({
+    status:  'triggered',
+    message: 'Analytics job started in background. Results will be available shortly.',
+  });
 });
 
 module.exports = router;

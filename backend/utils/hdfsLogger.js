@@ -1,114 +1,88 @@
-/**
- * @file hdfsLogger.js
- * @description Fault-tolerant event logger: HDFS primary, Supabase fallback.
- *   - If HDFS_ENABLED !== 'true', skips HDFS entirely (zero retry, zero delay).
- *   - logEvent() is fire-and-forget: always returns void, never throws.
- *   - Log path: /vaultiq/logs/{timestamp}_{event}_{user_id}.json
- * @dependencies node-fetch (v2), supabase
- * @exports logEvent
- */
+// VaultIQ — HDFS Event Logger with Supabase fallback
+// All logging is fire-and-forget: never awaited by the caller
 
-const fetch = require('node-fetch');
-const { supabaseAdmin } = require('./supabase');
+const axios = require('axios');
 
-/**
- * Two-step WebHDFS write:
- *   Step 1 → PUT to NameNode (no body) → expect 307 with DataNode Location
- *   Step 2 → PUT body to DataNode URL
- */
-async function writeToHDFS(payload) {
-  const baseUrl  = process.env.HDFS_WEBHDFS_URL;  // e.g. http://namenode:9870/webhdfs/v1
-  const hdfsUser = process.env.HDFS_USER || 'root';
+const HDFS_BASE = process.env.HDFS_WEBHDFS_URL;
+  // e.g. http://localhost:9870/webhdfs/v1
+const HDFS_USER = process.env.HDFS_USER || 'hadoop';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-  const fileName = `${payload.timestamp}_${payload.event}_${payload.user_id}.json`;
-  const hdfsPath = `/vaultiq/logs/${fileName}`;
+async function _writeToHDFS(logPath, eventJSON) {
+  const createUrl = `${HDFS_BASE}${logPath}?op=CREATE&user.name=${HDFS_USER}&overwrite=false`;
 
-  const createUrl = `${baseUrl}${hdfsPath}?op=CREATE&user.name=${encodeURIComponent(hdfsUser)}&overwrite=true`;
-
-  // Step 1: initiate — NameNode responds 307 with DataNode Location, no body sent
-  const initRes = await fetch(createUrl, {
-    method:   'PUT',
-    redirect: 'manual',   // must not auto-follow: PUT→GET mutation on redirect
-    timeout:  5000
-  });
-
-  if (initRes.status !== 307) {
-    throw new Error(`HDFS CREATE initiation returned ${initRes.status} (expected 307)`);
+  // Step 1: CREATE file if it doesn't exist (201 = created, 403 = already exists — both ok)
+  try {
+    await axios.put(createUrl, null, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+      maxRedirects: 5,
+      timeout: 10000
+    });
+  } catch (createErr) {
+    const status = createErr.response?.status;
+    if (status !== 403) {
+      throw createErr;
+    }
+    // 403 = file already exists — continue to APPEND
   }
 
-  const dataNodeUrl = initRes.headers.get('location');
-  if (!dataNodeUrl) {
-    throw new Error('HDFS 307 redirect missing Location header');
-  }
-
-  // Step 2: write data to DataNode
-  const writeRes = await fetch(dataNodeUrl, {
-    method:  'PUT',
+  // Step 2: APPEND the JSON line
+  const appendUrl = `${HDFS_BASE}${logPath}?op=APPEND&user.name=${HDFS_USER}`;
+  await axios.post(appendUrl, eventJSON + '\n', {
     headers: { 'Content-Type': 'application/octet-stream' },
-    body:    JSON.stringify(payload),
-    timeout: 5000
+    maxRedirects: 5,
+    timeout: 10000
   });
+}
 
-  if (!writeRes.ok) {
-    throw new Error(`HDFS DataNode write returned ${writeRes.status}`);
+async function _writeToSupabase(event) {
+  try {
+    await axios.post(`${SUPABASE_URL}/rest/v1/event_logs`, event, {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal'
+      }
+    });
+  } catch (err) {
+    console.error('[logEvent] Supabase write failed:', err.message);
   }
 }
 
-async function writeToSupabase(payload, source) {
-  const { error } = await supabaseAdmin
-    .from('event_logs')
-    .insert([{
-      event_type: payload.event  || 'generic',
-      user_id:    payload.user_id || null,
-      filename:   payload.filename  || null,
-      file_size:  payload.file_size || null,
-      ip:         payload.ip        || null,
-      payload,
-      source
-    }]);
+async function logEvent(eventType, payload) {
+  try {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    const logPath = `/vaultiq/logs/${today}/events.jsonl`;
 
-  if (error) throw new Error(error.message);
-}
+    const event = {
+      event_type:      eventType,
+      user_id:         payload.userId,
+      file_name:       payload.fileName       || null,
+      file_size_bytes: payload.fileSizeBytes   || null,
+      file_type:       payload.fileType        || null,
+      ai_verdict:      payload.aiVerdict       || null,
+      ai_score:        payload.aiScore         || null,
+      ip_address:      payload.ipAddress       || null,
+      duration_ms:     payload.durationMs      || null,
+      timestamp:       new Date().toISOString(),
+      metadata:        payload.metadata        || {}
+    };
 
-/**
- * @function logEvent
- * @description Fire-and-forget event logger. Never awaited by callers.
- * @param {Object} eventData
- * @param {string} eventData.event        - 'upload' | 'download' | 'delete'
- * @param {string} eventData.user_id
- * @param {string} [eventData.filename]
- * @param {number} [eventData.file_size]
- * @param {number} [eventData.timestamp]  - ms epoch (Date.now())
- * @param {string} [eventData.ip]
- */
-function logEvent(eventData) {
-  const payload = {
-    event:     eventData.event,
-    user_id:   eventData.user_id,
-    filename:  eventData.filename  || null,
-    file_size: eventData.file_size || null,
-    ip:        eventData.ip        || null,
-    timestamp: eventData.timestamp || Date.now()
-  };
-
-  // ── ENV GUARD ──────────────────────────────────────────────────────────
-  // HDFS_ENABLED !== 'true'  →  skip HDFS entirely, write to Supabase now.
-  // Zero retry, zero delay — local dev is unaffected.
-  if (process.env.HDFS_ENABLED !== 'true') {
-    writeToSupabase(payload, 'supabase_primary').catch(err => {
-      console.error('[logEvent] Supabase write failed:', err.message);
-    });
-    return;
+    if (HDFS_BASE) {
+      try {
+        await _writeToHDFS(logPath, JSON.stringify(event));
+      } catch (hdfsErr) {
+        console.warn('[logEvent] HDFS failed, falling back to Supabase:', hdfsErr.message);
+        await _writeToSupabase(event);
+      }
+    } else {
+      await _writeToSupabase(event);
+    }
+  } catch (err) {
+    console.error('[logEvent] All logging tiers failed:', err.message);
   }
-
-  // ── HDFS ENABLED ───────────────────────────────────────────────────────
-  // Single attempt. On any failure, fall back to Supabase immediately.
-  writeToHDFS(payload).catch(hdfsErr => {
-    console.warn('[logEvent] HDFS failed, falling back to Supabase:', hdfsErr.message);
-    writeToSupabase(payload, 'supabase_fallback').catch(dbErr => {
-      console.error('[logEvent] FATAL: all logging tiers failed:', dbErr.message);
-    });
-  });
 }
 
 module.exports = { logEvent };

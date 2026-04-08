@@ -25,7 +25,7 @@ function encrypt(buffer) {
     return { data, iv };
   } catch (err) {
     console.error('[crypto.encrypt]', err.message);
-    throw new Error('Failed to encrypt block');
+    throw new Error('Failed to encrypt block', { cause: err });
   }
 }
 
@@ -46,7 +46,7 @@ function sha256(buffer) {
     return crypto.createHash('sha256').update(buffer).digest('hex');
   } catch (err) {
     console.error('[crypto.sha256]', err.message);
-    throw new Error('Failed to compute hash');
+    throw new Error('Failed to compute hash', { cause: err });
   }
 }
 

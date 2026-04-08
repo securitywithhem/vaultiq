@@ -8,7 +8,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import LoadingSpinner from './components/LoadingSpinner';
 
-const Analytics = React.lazy(() => import('./pages/Analytics'));
+const AnalyticsDashboard = React.lazy(() => import('./components/AnalyticsDashboard'));
 const PlagiarismChecker = React.lazy(() => import('./pages/PlagiarismChecker'));
 
 const App = () => {
@@ -47,7 +47,7 @@ const App = () => {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="analytics" element={
             <React.Suspense fallback={<LoadingSpinner />}>
-              <Analytics />
+              <AnalyticsDashboard />
             </React.Suspense>
           } />
           <Route path="plagiarism" element={

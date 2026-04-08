@@ -6,7 +6,8 @@
   "scripts": {
     "start": "NODE_ENV=production node server.js",
     "dev": "node --watch server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "lint": "eslint . --fix"
   },
   "keywords": [
     "vaultiq",
@@ -37,5 +38,12 @@
     "nodemailer": "^8.0.4",
     "uuid": "^11.1.0",
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2"
   }
 }

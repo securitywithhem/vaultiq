@@ -29,10 +29,11 @@ router.post('/register', validate(registerSchema), async (req, res) => {
   try {
     const { email, password, fullName } = req.body;
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      options: { data: { full_name: fullName } }
+      email_confirm: true,
+      user_metadata: { full_name: fullName }
     });
 
     if (authError) {
@@ -99,7 +100,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     });
 
     if (authError) {
-      logger.warn('Login failed', { requestId: req.id, email });
+      logger.warn('Login failed', { requestId: req.id, email, error: authError.message });
       // Record failed login if we found the user
       if (userLookup?.id) {
         await recordFailedLogin(userLookup.id, email);
