@@ -81,15 +81,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("PlagiarismModel loaded. Corpus size: %d vectors",
              plagiarism_model._index.ntotal if plagiarism_model._index else 0)
 
-    # 4. AI detector model (RF + DistilBERT)
-    log.info("Loading AIDetectorModel …")
+    # 4. AI detector model (Random Forest only)
+    log.info("Loading AIDetectorModel (Random Forest only)…")
     ai_model = AIDetectorModel()
     await asyncio.get_event_loop().run_in_executor(_executor, ai_model.load)
     app.state.ai_model = ai_model
-    log.info(
-        "AIDetectorModel loaded. DistilBERT: %s",
-        "available" if ai_model.distilbert_loaded else "not found (RF-only mode)",
-    )
+    log.info("AIDetectorModel loaded. Using Random Forest inference.")
 
     app.state.models_loaded = True
     log.info("=== All models ready. API is live. ===")

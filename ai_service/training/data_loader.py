@@ -57,17 +57,23 @@ def _to_dataframe(texts: list[str], labels: list[int]) -> pd.DataFrame:
 
 # ─── Dataset Loaders ──────────────────────────────────────────────────────────
 
-def _load_raid() -> pd.DataFrame:
+def _load_raid(max_samples: int = 30000) -> pd.DataFrame:
     """
     Load the RAID dataset (liamdugan/raid).
 
     Expected columns: 'generation' (text), 'label' / 'model' indicating source.
     Label mapping: human rows → 0, generated rows → 1.
+
+    Args:
+        max_samples: Maximum samples to load (default 30000 for ~3GB)
     """
-    log.info("Loading RAID dataset …")
+    log.info("Loading RAID dataset (max %d samples) …", max_samples)
     try:
         ds = load_dataset("liamdugan/raid", split="train", trust_remote_code=True)
         df = ds.to_pandas()
+        if len(df) > max_samples:
+            df = df.sample(max_samples, random_state=42)
+            log.info("  Sampled down to %d rows", max_samples)
 
         # Determine text column
         text_col = "generation" if "generation" in df.columns else df.columns[0]
@@ -90,18 +96,24 @@ def _load_raid() -> pd.DataFrame:
         return pd.DataFrame(columns=["text", "label"])
 
 
-def _load_ai_pile() -> pd.DataFrame:
+def _load_ai_pile(max_samples: int = 15000) -> pd.DataFrame:
     """
     Load the AI text detection pile (artem9k/ai-text-detection-pile).
 
     Label mapping: 'Human' → 0, any AI → 1.
+
+    Args:
+        max_samples: Maximum samples to load (default 15000 for ~1.5GB)
     """
-    log.info("Loading AI-text-detection-pile …")
+    log.info("Loading AI-text-detection-pile (max %d samples) …", max_samples)
     try:
         ds = load_dataset(
             "artem9k/ai-text-detection-pile", split="train", trust_remote_code=True
         )
         df = ds.to_pandas()
+        if len(df) > max_samples:
+            df = df.sample(max_samples, random_state=42)
+            log.info("  Sampled down to %d rows", max_samples)
 
         text_col = next(
             (c for c in ("text", "content", "document") if c in df.columns),
@@ -130,19 +142,25 @@ def _load_ai_pile() -> pd.DataFrame:
         return pd.DataFrame(columns=["text", "label"])
 
 
-def _load_paraphrase() -> pd.DataFrame:
+def _load_paraphrase(max_samples: int = 10000) -> pd.DataFrame:
     """
     Load machine-paraphrase-dataset (jpwahle/machine-paraphrase-dataset).
 
     Paraphrased (machine-generated) text → label 1.
     Original human text → label 0.
+
+    Args:
+        max_samples: Maximum samples to load (default 10000 for ~1GB)
     """
-    log.info("Loading machine-paraphrase-dataset …")
+    log.info("Loading machine-paraphrase-dataset (max %d samples) …", max_samples)
     try:
         ds = load_dataset(
             "jpwahle/machine-paraphrase-dataset", split="train", trust_remote_code=True
         )
         df = ds.to_pandas()
+        if len(df) > max_samples:
+            df = df.sample(max_samples, random_state=42)
+            log.info("  Sampled down to %d rows", max_samples)
 
         text_col = next(
             (c for c in ("text", "paraphrase", "sentence") if c in df.columns),
@@ -174,27 +192,41 @@ def _load_paraphrase() -> pd.DataFrame:
 def build_dataset(
     max_per_class: Optional[int] = None,
     save: bool = True,
+    raid_max: int = 30000,
+    ai_pile_max: int = 15000,
+    paraphrase_max: int = 10000,
 ) -> dict[str, pd.DataFrame]:
     """
     Full dataset preparation pipeline.
 
     Steps:
-      1. Load all three datasets.
+      1. Load all three datasets (with optional size limits).
       2. Concatenate and deduplicate on SHA-256 hash.
       3. Balance classes (undersample majority).
       4. Stratified split: 70% train / 15% val / 15% test.
       5. Save splits to data/processed/ as Parquet (if save=True).
 
     Args:
-        max_per_class: Optional cap on samples per class before splitting.
-        save:          Whether to write Parquet files to disk.
+        max_per_class:   Optional cap on samples per class before splitting.
+        save:            Whether to write Parquet files to disk.
+        raid_max:        Max samples from RAID dataset (default 30000 for ~3GB)
+        ai_pile_max:     Max samples from AI pile (default 15000 for ~1.5GB)
+        paraphrase_max:  Max samples from paraphrase (default 10000 for ~1GB)
+                         Total ~5.5GB
 
     Returns:
         dict with keys "train", "val", "test" mapping to DataFrames.
+
+    Example for 5GB dataset:
+        build_dataset(raid_max=20000, ai_pile_max=12000, paraphrase_max=8000)
     """
     frames = []
-    for loader in (_load_raid, _load_ai_pile, _load_paraphrase):
-        df = loader()
+    for loader, max_samples in [
+        (_load_raid, raid_max),
+        (_load_ai_pile, ai_pile_max),
+        (_load_paraphrase, paraphrase_max),
+    ]:
+        df = loader(max_samples)
         if not df.empty:
             frames.append(df)
 
@@ -258,4 +290,19 @@ def build_dataset(
 
 
 if __name__ == "__main__":
-    build_dataset()
+    # Run with default sizes (~5.5 GB total)
+    # build_dataset()
+
+    # Run with smaller dataset (~5 GB total)
+    # - RAID: 20K samples (~2.5GB)
+    # - AI Pile: 12K samples (~1.2GB)
+    # - Paraphrase: 8K samples (~1GB)
+    # - Total: ~4.7 GB
+    build_dataset(
+        raid_max=20000,
+        ai_pile_max=12000,
+        paraphrase_max=8000,
+    )
+
+    # Run with minimal dataset (~2 GB total) - for testing
+    # build_dataset(raid_max=5000, ai_pile_max=5000, paraphrase_max=5000)

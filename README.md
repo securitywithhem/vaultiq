@@ -27,7 +27,7 @@ VaultIQ lets users securely upload, store, download, and analyse documents. Ever
 
 - **Encrypted file vault** — AES-256-CBC encryption with per-file random IVs and SHA-256 integrity verification on every download
 - **AI Integrity Search** — plagiarism detection using SBERT + FAISS semantic similarity
-- **AI Content Detection** — distinguishes human-written vs AI-generated text using an ensemble of DistilBERT + Random Forest
+- **AI Content Detection** — distinguishes human-written vs AI-generated text using Random Forest on 7 GPT-2/statistical features
 - **Big Data Analytics** — event logs streamed to HDFS, processed by Apache Spark, visualised in a live dashboard
 
 ---
@@ -66,7 +66,7 @@ The system is composed of three independent services that communicate over HTTP:
 │  POST /corpus/add    → add document to FAISS plagiarism index       │
 │  GET  /health        → liveness probe                               │
 │                                                                     │
-│  Models: SBERT (all-MiniLM-L6-v2), FAISS, DistilBERT, RandomForest │
+│  Models: SBERT (all-MiniLM-L6-v2), FAISS, GPT-2, RandomForest      │
 └─────────────────────────────────────────────────────────────────────┘
 
 Big Data Pipeline  (optional, Docker):
@@ -89,7 +89,7 @@ Big Data Pipeline  (optional, Docker):
 | File Download | Stream-mode decryption for large files; integrity re-verified before delivery |
 | File Delete | S3 + Supabase metadata removed atomically |
 | Plagiarism Detection | SBERT sentence embeddings → FAISS similarity search; windowed scoring |
-| AI Content Detection | GPT-2 perplexity + burstiness features + DistilBERT ensemble |
+| AI Content Detection | GPT-2 perplexity + 7 statistical features → Random Forest classifier |
 | Big Data Analytics | 7 Spark analytics (daily trend, top files, event breakdown, anomaly detection…) |
 | HDFS Audit Logging | Every upload/download/delete logged to HDFS; falls back to Supabase |
 | Rate Limiting | Per-route limiters: 10 auth/15min, 100 uploads/hr, 60 file ops/min |
@@ -111,7 +111,7 @@ Big Data Pipeline  (optional, Docker):
 
 ### AI Service
 - Python 3.11, FastAPI, Uvicorn
-- HuggingFace Transformers (`distilbert-base-uncased`, `all-MiniLM-L6-v2`, `gpt2`)
+- HuggingFace Transformers (`all-MiniLM-L6-v2`, `gpt2`)
 - `faiss-cpu`, `scikit-learn`, `sentence-transformers`
 - `pdfplumber`, `python-docx` (text extraction from PDF/DOCX)
 
@@ -206,7 +206,7 @@ vaultiq/
 ├── ai_service/                  # Python FastAPI AI microservice
 │   ├── models/
 │   │   ├── plagiarism_model.py      # SBERT + FAISS index
-│   │   └── ai_detector_model.py     # DistilBERT + RandomForest ensemble
+│   │   └── ai_detector_model.py     # RandomForest with GPT-2 features
 │   ├── services/
 │   │   ├── plagiarism_service.py    # Detection orchestration
 │   │   ├── ai_detection_service.py  # Detection orchestration
@@ -214,9 +214,8 @@ vaultiq/
 │   │   ├── preprocessor.py          # Text tokenisation and cleaning
 │   │   └── text_extractor.py        # PDF/DOCX → plain text
 │   ├── training/
-│   │   ├── train_distilbert.py      # Fine-tune DistilBERT
-│   │   ├── train_random_forest.py   # Train RF classifier
-│   │   └── data_loader.py
+│   │   ├── train_random_forest.py   # Train RF classifier on 7 features
+│   │   └── data_loader.py           # Download + prepare HuggingFace datasets
 │   ├── schemas/
 │   │   └── request_response.py      # Pydantic v2 models
 │   ├── utils/
@@ -475,11 +474,12 @@ Accepted file types: `pdf`, `docx`, `txt`, `md`, `rtf` (max 50 MB)
    a. Preprocess: sentence-split, clean tokens
    b. Plagiarism: SBERT embed → FAISS cosine search → windowed score
    c. AI detection:
-      - GPT-2 perplexity (low = AI-like)
-      - Burstiness / entropy of sentence lengths
-      - Random Forest on extracted features
-      - DistilBERT binary classifier (fine-tuned)
-      - Weighted ensemble: 40% RF + 60% DistilBERT
+      - GPT-2 perplexity (low perplexity = AI-like, smooth text)
+      - Burstiness (variance of sentence lengths — AI text is uniform)
+      - Shannon entropy (AI uses narrower vocabulary)
+      - Repetition rate (duplicate 4-grams — AI repeats phrases)
+      - Avg sentence length, punctuation density, vocab richness
+      - Random Forest classifies across all 7 features → probability
    d. Combine into overall risk score
 5. Return DetectionResponse:
    { plagiarism: { score, verdict, matched_segments },

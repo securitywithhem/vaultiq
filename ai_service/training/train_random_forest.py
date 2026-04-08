@@ -96,7 +96,12 @@ def train() -> None:
     if not train_path.exists():
         log.info("Processed data not found — running data_loader …")
         from training.data_loader import build_dataset
-        build_dataset()
+        # Use optimized dataset sizes (~5 GB total)
+        build_dataset(
+            raid_max=20000,
+            ai_pile_max=12000,
+            paraphrase_max=8000,
+        )
 
     train_df = pd.read_parquet(str(train_path))
     val_df   = pd.read_parquet(str(val_path))
