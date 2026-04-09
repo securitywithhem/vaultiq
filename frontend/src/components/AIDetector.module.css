@@ -1,0 +1,161 @@
+.container {
+  background: var(--bg-card, #1F2937);
+  border: 1px solid var(--border-color, #374151);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 20px 0;
+  color: #F9FAFB;
+}
+.title {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 1.25rem;
+  color: #E5E7EB;
+}
+.subtitle {
+  color: #9CA3AF;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+.fileInput {
+  display: block;
+  width: 100%;
+  margin-bottom: 16px;
+  color: #D1D5DB;
+}
+.fileInput::file-selector-button {
+  background: #374151;
+  border: 1px solid #4B5563;
+  color: #E5E7EB;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 16px;
+  transition: background 0.2s;
+}
+.fileInput::file-selector-button:hover {
+  background: #4B5563;
+}
+.fileList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+  background: #111827;
+  border-radius: 8px;
+  padding: 12px;
+}
+.fileList li {
+  color: #D1D5DB;
+  font-size: 0.9rem;
+  padding: 4px 0;
+  border-bottom: 1px solid #1F2937;
+}
+.fileList li:last-child {
+  border-bottom: none;
+}
+.detectBtn {
+  background: #3B82F6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s;
+}
+.detectBtn:hover:not(:disabled) {
+  background: #2563EB;
+}
+.detectBtn:disabled {
+  background: #374151;
+  color: #9CA3AF;
+  cursor: not-allowed;
+}
+.error {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.loading {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #9CA3AF;
+}
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #374151;
+  border-top: 2px solid #3B82F6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.resultsArea {
+  margin-top: 24px;
+}
+.resultCard {
+  background: #111827;
+  border: 1px solid #374151;
+  padding: 16px;
+  marginBottom: 16px;
+  border-radius: 8px;
+}
+.filename {
+  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+  color: #E5E7EB;
+}
+.score {
+  font-size: 2rem;
+  font-weight: bold;
+  margin: 0 0 16px 0;
+  color: #F9FAFB;
+}
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: #D1D5DB;
+}
+.badgeHuman { background: rgba(16, 185, 129, 0.2); color: #34D399; padding: 4px 10px; border-radius: 12px; font-weight: 500; }
+.badgeMixed { background: rgba(245, 158, 11, 0.2); color: #FBBF24; padding: 4px 10px; border-radius: 12px; font-weight: 500; }
+.badgeAI { background: rgba(239, 68, 68, 0.2); color: #F87171; padding: 4px 10px; border-radius: 12px; font-weight: 500; }
+.warning {
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #FBBF24;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.chunkLabel {
+  font-size: 0.8rem;
+  color: #9CA3AF;
+  margin: 16px 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.chunkRow {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.chunk {
+  height: 8px;
+  width: 24px;
+  border-radius: 2px;
+  opacity: 0.8;
+}

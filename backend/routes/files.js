@@ -41,7 +41,7 @@ const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.docm', '.txt', '.md', '.rtf'];
 // ─── Helpers ────────────────────────────────────────────────────────
 function sanitizeFilename(filename) {
   let sanitized = path.basename(filename);
-  sanitized = sanitized.replace(/[^a-zA-Z0-9._\-]/g, '_');
+  sanitized = sanitized.replace(/[^a-zA-Z0-9._-]/g, '_');
   return sanitized.slice(0, 255);
 }
 
@@ -96,8 +96,8 @@ class IVExtractorStream extends Transform {
 }
 
 // Fire-and-forget log (never blocks the response)
-function asyncLog(eventData) {
-  logEvent(eventData).catch(err => {
+function asyncLog(eventType, payload) {
+  logEvent(eventType, payload).catch(err => {
     logger.error('HDFS log failed', { error: err.message });
   });
 }
@@ -156,13 +156,12 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       return res.status(500).json({ error: 'Database error storing file record' });
     }
 
-    asyncLog({
-      event: 'upload',
-      user_id: req.user.id,
-      filename: sanitizedFilename,
-      file_size: req.file.size,
-      timestamp: Date.now(),
-      ip: req.ip
+    asyncLog('file_upload', {
+      userId: req.user.id,
+      fileName: sanitizedFilename,
+      fileSizeBytes: req.file.size,
+      fileType: ext,
+      ipAddress: req.ip,
     });
 
     logger.info('File uploaded', { requestId: req.id, fileId: fileRecord.id, size: req.file.size });
@@ -240,13 +239,11 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
         }
       });
 
-      asyncLog({
-        event: 'download',
-        user_id: req.user.id,
-        filename: file.filename,
-        file_size: file.file_size,
-        timestamp: Date.now(),
-        ip: req.ip
+      asyncLog('file_download', {
+        userId: req.user.id,
+        fileName: file.filename,
+        fileSizeBytes: file.file_size,
+        ipAddress: req.ip,
       });
 
       return; // Response handled by pipe
@@ -268,13 +265,11 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
       return res.status(409).json({ error: 'Integrity check failed — file may be corrupted' });
     }
 
-    asyncLog({
-      event: 'download',
-      user_id: req.user.id,
-      filename: file.filename,
-      file_size: file.file_size,
-      timestamp: Date.now(),
-      ip: req.ip
+    asyncLog('file_download', {
+      userId: req.user.id,
+      fileName: file.filename,
+      fileSizeBytes: file.file_size,
+      ipAddress: req.ip,
     });
 
     return res.send(plaintext);
@@ -311,13 +306,11 @@ router.delete('/:id', authenticateToken, validate(fileIdParams), async (req, res
       return res.status(500).json({ error: 'Failed to delete file record' });
     }
 
-    asyncLog({
-      event: 'delete',
-      user_id: req.user.id,
-      filename: file.filename,
-      file_size: file.file_size,
-      timestamp: Date.now(),
-      ip: req.ip
+    asyncLog('file_delete', {
+      userId: req.user.id,
+      fileName: file.filename,
+      fileSizeBytes: file.file_size,
+      ipAddress: req.ip,
     });
 
     logger.info('File deleted', { requestId: req.id, fileId: file.id });

@@ -18,7 +18,7 @@ const authRoutes = require('./routes/auth');
 const filesRoutes = require('./routes/files');
 const analyticsRoutes = require('./routes/analytics');
 const plagiarismRoutes = require('./routes/plagiarism');
-const aiDetectorRoutes = require('./routes/aiDetector');
+const aiDetectionRoutes = require('./routes/aiDetection');
 
 // ─── Environment Validation ─────────────────────────────────────────
 const REQUIRED_ENV = [
@@ -101,42 +101,22 @@ app.use(express.json({ limit: '50mb' }));
 // Double-submit cookie pattern is unnecessary with this architecture.
 
 // ─── Rate Limiters ──────────────────────────────────────────────────
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { error: 'Too many requests, please try again later' },
-  standardHeaders: true,
-  legacyHeaders: false
-});
+const applyRateLimit = (limiter) => process.env.NODE_ENV === 'production' ? limiter : (req, res, next) => next();
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many authentication attempts, please try again later' },
-  skipSuccessfulRequests: true
-});
-
-const uploadLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 100,
-  message: { error: 'Upload limit exceeded, please try again later' }
-});
-
-const fileLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 60,
-  message: { error: 'Too many file operations, please try again later' }
-});
+const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, skipSuccessfulRequests: true });
+const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 100 });
+const fileLimiter = rateLimit({ windowMs: 60 * 1000, max: 60 });
 
 // ─── Apply Global Rate Limiter ──────────────────────────────────────
-app.use('/api/', globalLimiter);
+app.use('/api/', applyRateLimit(globalLimiter));
 
 // ─── Route Mounts ───────────────────────────────────────────────────
-app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/files', fileLimiter, filesRoutes);
+app.use('/api/auth', applyRateLimit(authLimiter), authRoutes);
+app.use('/api/files', applyRateLimit(fileLimiter), filesRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/plagiarism', uploadLimiter, plagiarismRoutes);
-app.use('/api/ai-detect', uploadLimiter, aiDetectorRoutes);
+app.use('/api/plagiarism', applyRateLimit(uploadLimiter), plagiarismRoutes);
+app.use('/api/ai-detect', applyRateLimit(uploadLimiter), aiDetectionRoutes);
 
 // ─── System Endpoints ───────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -219,10 +199,12 @@ process.on('uncaughtException', (err) => {
 });
 
 // ─── Start Server ───────────────────────────────────────────────────
-server = app.listen(PORT, () => {
-  logger.info(`VaultIQ backend listening on port ${PORT}`, {
-    env: process.env.NODE_ENV || 'development'
+if (require.main === module) {
+  server = app.listen(PORT, () => {
+    logger.info(`VaultIQ backend listening on port ${PORT}`, {
+      env: process.env.NODE_ENV || 'development'
+    });
   });
-});
+}
 
-module.exports = app;
+module.exports = { app, server };

@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 
 # start.sh - VaultIQ Full Stack Orchestrator
 # Starts Node.js Backend, Python AI Service, and React Frontend concurrently
@@ -7,9 +7,15 @@
 export BROWSER=none
 export CI=true
 
-# Load environment variables
+# Attempt to load NVM (Node Version Manager) automatically
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+# Load environment variables (ensures fresh load every time)
 if [ -f backend/.env ]; then
-  export $(grep -v '^#' backend/.env | xargs)
+  set -a
+  source backend/.env
+  set +a
 else
   echo "Error: backend/.env file not found. Please create it first."
   exit 1
@@ -42,9 +48,9 @@ echo "--- Starting VaultIQ Ecosystem ---"
 
 # 1. AI Service (Port 8001)
 echo "[AI] Starting VaultIQ AI Service..."
-cd ai_service
-if [ -d "venv" ]; then
-    ./venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT_AI:-8001} > server.log 2>&1 &
+cd ai-service
+if [ -d "../.venv" ]; then
+    ../.venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT_AI:-8001} > server.log 2>&1 &
     AI_PID=$!
 else
     echo "Warning: AI venv not found. Attempting global uvicorn..."
