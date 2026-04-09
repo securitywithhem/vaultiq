@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 
 # start.sh - VaultIQ Full Stack Orchestrator
 # Starts Node.js Backend, Python AI Service, and React Frontend concurrently
