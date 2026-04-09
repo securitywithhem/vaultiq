@@ -1,6 +1,6 @@
 /**
- * @file plagiarism.schema.js
- * @description Joi validation schemas for plagiarism routes
+ * @file textAiDetection.schema.js
+ * @description Joi validation schemas for text-based AI detection routes
  */
 
 const Joi = require('joi');

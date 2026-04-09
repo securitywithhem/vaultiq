@@ -14,7 +14,7 @@ Client → CORS → Helmet → Request-ID → Rate Limiter → Route → Auth Mi
                                                         S3 (encrypted storage)
                                                         Supabase (metadata DB)
                                                         HDFS (event logs)
-                                                        AI Service (plagiarism/detection)
+                                                        AI Service (generative AI detection)
 ```
 
 ### Security Stack
@@ -143,28 +143,23 @@ Uses `vaultiq_refresh_token` cookie. Issues new access + refresh token pair (rot
 
 ---
 
-### Plagiarism Detection (`/api/plagiarism`)
+### Text-based AI Detection (`/api/ai-detect-text`)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/plagiarism/check` | ✅ | Check text for similarity |
-| `POST` | `/plagiarism/add` | ✅ | Add document to corpus |
+| `POST` | `/ai-detect-text/check` | ✅ | Detect AI content in raw text |
+| `POST` | `/ai-detect-text/add` | ✅ | Add text to analysis corpus (stub) |
 
-#### `POST /plagiarism/check`
+#### `POST /ai-detect-text/check`
 **Body:** `{ "text": "document content..." }` (max 100K chars)
-
-#### `POST /plagiarism/add`
-**Body:** `{ "doc_id": "doc-123", "text": "document content..." }`
 
 ---
 
-### AI Content Detection (`/api/ai-detect`)
+### File-based AI Detection (`/api/ai-detect`)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/ai-detect/train` | ✅ | Train the detection model |
-| `POST` | `/ai-detect/check` | ✅ | Detect AI content in uploaded file |
-| `POST` | `/ai-detect/check-text` | ✅ | Detect AI content in raw text |
+| `POST` | `/ai-detect/` | ✅ | Detect AI content in uploaded file |
 | `GET` | `/ai-detect/status` | ❌ | AI service health check |
 
 ---
@@ -231,8 +226,8 @@ backend/
 │   ├── auth.js                  # Register, login, logout, refresh
 │   ├── files.js                 # Upload, list, download, delete
 │   ├── analytics.js             # HDFS analytics
-│   ├── plagiarism.js            # AI plagiarism proxy
-│   └── aiDetector.js            # AI content detection proxy
+│   ├── aiDetection.js           # File-based AI detection proxy
+│   └── textAiDetection.js       # Text-based AI detection proxy
 ├── utils/
 │   ├── logger.js                # Winston logger
 │   ├── crypto.js                # AES-256-CBC encrypt/decrypt
@@ -244,8 +239,7 @@ backend/
 ├── validators/
 │   ├── auth.schema.js           # Auth Joi schemas
 │   ├── files.schema.js          # Files Joi schemas
-│   ├── plagiarism.schema.js     # Plagiarism Joi schemas
-│   └── aiDetector.schema.js     # AI detector Joi schemas
+│   └── textAiDetection.schema.js # Text AI detector schemas
 └── scripts/
     └── migrations/
         └── 001_add_indexes.sql  # Database index migration

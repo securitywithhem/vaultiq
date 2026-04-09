@@ -2,7 +2,7 @@
 
 VaultIQ is a production-grade, full-stack document storage platform designed for the highest levels of security, data integrity, and system observability. 
 
-It provides end-to-end AES-256 encryption, AI-powered predictive document analysis (plagiarism and AI-content detection), and a robust Big Data analytics pipeline structured on Apache Hadoop and Spark.
+It provides end-to-end AES-256 encryption, AI-powered predictive document analysis (generative AI-content detection), and a robust Big Data analytics pipeline structured on Apache Hadoop and Spark.
 
 ---
 
@@ -29,9 +29,8 @@ It provides end-to-end AES-256 encryption, AI-powered predictive document analys
 
 VaultIQ extends the traditional cloud storage paradigm by ensuring zero compromise on data security and adding intelligent document capabilities. Every file uploaded to the platform undergoes a rigorous process: it is first encrypted with a unique, randomized AES-256-CBC IV, signed with a SHA-256 integrity hash, and securely persisted in an AWS S3 Vault. The system is designed such that not even server administrators can decipher the file contents without the application decryption flow.
 
-In addition to storage, VaultIQ supports **AI Document Integrity**. We have baked an intelligent microservice (written in Python/FastAPI) that assesses if an uploaded document is plagiarized or written by generative AI. It leverages a combination of state-of-the-art NLP models:
-- **Plagiarism Detection**: Uses SBERT (Sentence-BERT) embeddings coupled with FAISS (Facebook AI Similarity Search) to perform rapid semantic similarity comparisons across billions of vectors.
-- **AI-Content Detection**: Implements a Random Forest classifier trained on 7 distinct statistical features derived from the GPT-2 model (like perplexity, burstiness, and Shannon entropy) to measure how likely a text was written by an LLM.
+In addition to storage, VaultIQ supports **AI Document Integrity**. We have baked an intelligent microservice (written in Python/FastAPI) that assesses if an uploaded document was written by generative AI. It leverages a combination of state-of-the-art NLP models:
+- **AI-Content Detection**: Hybrid ensemble (RoBERTa + Logistic Regression) measuring perplexity, burstiness, and structural nuances to detect LLM content.
 
 To monitor the scale and usage of the platform, the **Big Data Analytics** pipeline automatically ships fire-and-forget system event logs asynchronously to an Apache Hadoop Distributed File System (HDFS). Nightly or on-demand Apache Spark batch jobs reduce these logs into highly digestible metric objects which map directly back into the live React dashboard.
 
@@ -284,6 +283,7 @@ A highly secured proxy environment interfaces with internal domains. JWT Auth re
 - `POST /api/files/upload` - Multipart ingestion and encryption
 - `GET /api/files` - Decrypted byte retrieval
 - `POST /api/ai-detect/` - Forwards to AI Service for deep content analysis
+- `POST /api/ai-detect-text/` - Forwards to AI Service for deep content analysis
 - `GET /api/analytics` - Extracts daily HDFS insights
 
 ---

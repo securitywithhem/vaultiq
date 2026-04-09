@@ -17,7 +17,7 @@ const { requestIdMiddleware } = require('./middleware/requestId');
 const authRoutes = require('./routes/auth');
 const filesRoutes = require('./routes/files');
 const analyticsRoutes = require('./routes/analytics');
-const plagiarismRoutes = require('./routes/plagiarism');
+const textAiDetectionRoutes = require('./routes/textAiDetection');
 const aiDetectionRoutes = require('./routes/aiDetection');
 
 // ─── Environment Validation ─────────────────────────────────────────
@@ -115,7 +115,7 @@ app.use('/api/', applyRateLimit(globalLimiter));
 app.use('/api/auth', applyRateLimit(authLimiter), authRoutes);
 app.use('/api/files', applyRateLimit(fileLimiter), filesRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/plagiarism', applyRateLimit(uploadLimiter), plagiarismRoutes);
+app.use('/api/ai-detect-text', applyRateLimit(uploadLimiter), textAiDetectionRoutes);
 app.use('/api/ai-detect', applyRateLimit(uploadLimiter), aiDetectionRoutes);
 
 // ─── System Endpoints ───────────────────────────────────────────────

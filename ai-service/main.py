@@ -218,6 +218,69 @@ async def detect_files(
     return JSONResponse(status_code=status.HTTP_200_OK, content=results)
 
 
+class TextDetectionRequest(Any):
+    """Schema for text-based detection requests."""
+    text: str
+    document_id: str | None = None
+
+
+@app.post("/detect/text", summary="Detect AI-generated content in raw text")
+async def detect_text(request: dict[str, Any]) -> JSONResponse:
+    """Process raw text through the AI detection pipeline.
+
+    Args:
+        request: JSON body with ``text`` and optional ``document_id``.
+
+    Returns:
+        200 JSON with detection results.
+    """
+    if not detector.is_model_loaded():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI models are not loaded. Please try again later."
+        )
+
+    text = request.get("text", "")
+    if not text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text content cannot be empty."
+        )
+
+    try:
+        chunks = preprocessor.preprocess(text)
+        detection_result = detector.detect(chunks)
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "document_id": request.get("document_id", "raw-text"),
+                "chunks_count": len(chunks),
+                **detection_result
+            }
+        )
+    except Exception as exc:
+        logger.error(f"Text detection failed: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Detection failed: {exc}"
+        )
+
+
+@app.post("/analysis/add", summary="Register text for future analysis (stub)")
+async def add_to_analysis(request: dict[str, Any]) -> JSONResponse:
+    """Stub endpoint for adding text to an analysis corpus.
+    
+    In a full implementation, this might index the text for similarity search.
+    Since we are focusing on AI Detection only, this returns a success stub.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"status": "registered", "message": "Text added to analysis index."}
+    )
+
+
+
 # ---------------------------------------------------------------------------
 # Dev entrypoint
 # ---------------------------------------------------------------------------

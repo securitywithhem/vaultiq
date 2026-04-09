@@ -1,6 +1,6 @@
 /**
- * @file plagiarism.js
- * @description Proxy routes for forwarding Plagiarism Detection requests to the AI service
+ * @file textAiDetection.js
+ * @description Proxy routes for forwarding Text-based AI Detection requests to the AI service
  * @dependencies express, node-fetch, auth middleware, validate, logger
  * @exports router
  */
@@ -9,7 +9,7 @@ const express = require('express');
 const fetch = require('node-fetch');
 const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const { checkSchema, addSchema } = require('../validators/plagiarism.schema');
+const { checkSchema, addSchema } = require('../validators/textAiDetection.schema');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -20,16 +20,16 @@ router.post('/check', authenticateToken, validate(checkSchema), async (req, res)
   try {
     const { text } = req.body;
 
-    // AI service /detect endpoint requires both text and document_id
-    const response = await fetch(`${AI_SERVICE_URL}/detect`, {
+    // AI service /detect/text endpoint requires both text and document_id
+    const response = await fetch(`${AI_SERVICE_URL}/detect/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, document_id: req.id || 'plagiarism-check' }),
+      body: JSON.stringify({ text, document_id: req.id || 'AI detection' }),
       timeout: 30000 // 30s timeout for AI processing
     });
 
     if (!response.ok) {
-      logger.warn('AI plagiarism check returned error', {
+      logger.warn('AI text check returned error', {
         requestId: req.id, status: response.status
       });
     }
@@ -37,7 +37,7 @@ router.post('/check', authenticateToken, validate(checkSchema), async (req, res)
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (err) {
-    logger.error('Plagiarism check error', { requestId: req.id, error: err.message });
+    logger.error('AI detection check error', { requestId: req.id, error: err.message });
     return res.status(502).json({ error: 'AI Service connection failed' });
   }
 });
@@ -47,8 +47,8 @@ router.post('/add', authenticateToken, validate(addSchema), async (req, res) => 
   try {
     const { doc_id, text } = req.body;
 
-    // AI service corpus endpoint expects doc_id, text, and optional title
-    const response = await fetch(`${AI_SERVICE_URL}/corpus/add`, {
+    // AI service analysis/add endpoint expects doc_id, text, and optional title
+    const response = await fetch(`${AI_SERVICE_URL}/analysis/add`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doc_id, text, title: '' }),
@@ -58,7 +58,7 @@ router.post('/add', authenticateToken, validate(addSchema), async (req, res) => 
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (err) {
-    logger.error('Plagiarism add error', { requestId: req.id, error: err.message });
+    logger.error('AI detection add error', { requestId: req.id, error: err.message });
     return res.status(502).json({ error: 'AI Service connection failed' });
   }
 });

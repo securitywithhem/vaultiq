@@ -33,7 +33,7 @@ const Navbar = () => {
           <NavLink to="/analytics" className={({isActive}) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>
             Analytics
           </NavLink>
-          <NavLink to="/plagiarism" className={({isActive}) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>
+          <NavLink to="/ai-detection" className={({isActive}) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>
             AI Check
           </NavLink>
         </div>
@@ -61,7 +61,7 @@ const Navbar = () => {
         <div className={styles.mobileMenu}>
           <NavLink to="/dashboard" className={styles.mobileLink} onClick={toggleMenu}>Dashboard</NavLink>
           <NavLink to="/analytics" className={styles.mobileLink} onClick={toggleMenu}>Analytics</NavLink>
-          <NavLink to="/plagiarism" className={styles.mobileLink} onClick={toggleMenu}>AI Check</NavLink>
+          <NavLink to="/ai-detection" className={styles.mobileLink} onClick={toggleMenu}>AI Check</NavLink>
           <div className={styles.mobileUserSection}>
             <span className={styles.mobileUserEmail}>{user?.email}</span>
             <button onClick={() => { logout(); toggleMenu(); }} className={styles.mobileLogoutBtn}>Logout</button>
