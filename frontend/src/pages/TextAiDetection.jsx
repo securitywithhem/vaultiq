@@ -1,9 +1,9 @@
 import React from 'react';
 import Navbar from '../components/Navbar';
-import styles from './PlagiarismChecker.module.css';
+import styles from './TextAiDetection.module.css';
 import AIDetector from '../components/AIDetector';
 
-const PlagiarismChecker = () => {
+const TextAiDetection = () => {
   return (
     <div className={styles.page}>
       <Navbar />
@@ -22,4 +22,4 @@ const PlagiarismChecker = () => {
   );
 };
 
-export default PlagiarismChecker;
+export default TextAiDetection;

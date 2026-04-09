@@ -9,7 +9,7 @@ import Dashboard from './pages/Dashboard';
 import LoadingSpinner from './components/LoadingSpinner';
 
 const AnalyticsDashboard = React.lazy(() => import('./components/AnalyticsDashboard'));
-const PlagiarismChecker = React.lazy(() => import('./pages/PlagiarismChecker'));
+const TextAiDetection = React.lazy(() => import('./pages/TextAiDetection'));
 
 const App = () => {
   return (
@@ -50,9 +50,9 @@ const App = () => {
               <AnalyticsDashboard />
             </React.Suspense>
           } />
-          <Route path="plagiarism" element={
+          <Route path="ai-detection" element={
             <React.Suspense fallback={<LoadingSpinner />}>
-              <PlagiarismChecker />
+              <TextAiDetection />
             </React.Suspense>
           } />
         </Route>
