@@ -111,22 +111,27 @@ The internal mechanics of the `ai-service` predicting document origins.
 
 ```mermaid
 flowchart TD
-    Req([POST /detect/file]) --> Ext[Text Extractor]
-    Ext -->|pdfplumber/docx| Raw[Raw Plaintext]
-    Raw --> Prep[Preprocessor]
+    Req([POST /detect]) --> Ext[Smart Content Extractor]
+    Ext -->|pdf/docx/txt| Text[Text Layer Extraction]
+    Ext -->|Image/Scanned PDF| OCR[Tesseract OCR]
+    Ext -->|Video| Trans[Whisper Transcription]
+    
+    Text --> Full[Full Text]
+    OCR --> Full
+    Trans --> Full
+    
+    Full --> Prep[Preprocessor]
     Prep -->|Sentence tokenization| Chunks[Text Chunks]
     
-    Chunks --> Plag[Plagiarism Engine]
-    Chunks --> AID[AI Detection Engine]
+    subgraph Ensemble[Meta-Ensemble Engine]
+        Chunks --> Rob[RoBERTa Classifier]
+        Chunks --> Stat[Statistical Feature Extractor]
+        Stat -->|Perplexity, Burstiness, TTR, etc.| LR[Logistic Regression]
+        
+        Rob -->|70% weight| Agg[Weighted Aggregator]
+        LR -->|30% weight| Agg
+    end
     
-    Plag -->|SBERT + FAISS Semantic Search| PlagRes(Similarity Score)
-    
-    AID -->|GPT-2 Feature Extraction| Feats[Perplexity, Burstiness, Entropy]
-    Feats --> RF[Random Forest Classifier]
-    RF --> AIRes(Probability Score)
-    
-    PlagRes --> Agg[Aggregator]
-    AIRes --> Agg
     Agg --> Resp([Unified JSON Response])
 ```
 
@@ -139,8 +144,8 @@ flowchart TD
 | **Secure Authentication** | Email + password auth via Supabase; JWT stored in `HttpOnly SameSite=Strict` cookies; automatic token rotation. |
 | **Account Lockout 防雷** | 5 failed logins triggers a 15-min lockout mechanism. |
 | **Encrypted File Vault** | End-to-end AES-256-CBC encryption per file, SHA-256 mapping for high integrity assurance; piped securely into AWS S3. |
-| **AI Integrity Engine** | Check for textual plagiarism using dense vectors (SBERT+FAISS windowed scoring). |
-| **AI Content Scanner** | Distinguish between LLM models (ChatGPT, Claude) vs human-crafted content using a Random Forest model applied to perplexity analysis. |
+| **Multimodal Extraction** | Smart extraction of text from PDFs, DOCX, TXT, Images (OCR), and Videos (Whisper transcription). |
+| **AI Content Scanner** | Hybrid ensemble (RoBERTa + Logistic Regression) measuring perplexity, burstiness, and structural nuances to detect LLM content. |
 | **Big Data Analytics** | 7 key Spark analytic endpoints running securely over HDFS logs (trends, top lists, anomalies). |
 | **Fault Tolerance** | Safe fallback mechanisms for all infrastructure tiers, including DB-based event logs if HDFS experiences downtime. |
 
@@ -153,14 +158,15 @@ flowchart TD
 - Recharts, React Dropzone, Hot Toast
 
 ### Core Backend 
-- Node.js, Express 5
+- Node.js, Express 5 
 - `jsonwebtoken`, `helmet`, `express-rate-limit`
 - Supabase JS API, AWS SDK v3 (`@aws-sdk/client-s3`)
 
 ### AI Microservice
 - Python 3.11, FastAPI
-- HuggingFace Transformers (`all-MiniLM-L6-v2`, `gpt2`)
-- FAISS, Scikit-Learn
+- HuggingFace Transformers (`roberta-base-openai-detector`, `gpt2`)
+- Pytesseract (OCR), OpenAI Whisper (Transcription)
+- Scikit-Learn, Joblib
 
 ### Infrastructure / Big Data Deployments
 - Supabase (PostgreSQL 15)
@@ -187,13 +193,14 @@ vaultiq/
 │   └── server.js                # Core API bootstrap
 │
 ├── ai-service/                  # Python FastAPI AI microservice
-│   ├── models/                  # ML architectures (RandomForest, Embedding)
-│   ├── services/                # Predictor abstractions
-│   ├── tests/                   # Python Unit Testing
-│   └── main.py                  # API routes for ML inference
+│   ├── models/                  # ML architectures (Logistic Regression, Pickles)
+│   ├── training/                # Dataset management and model training
+│   ├── main.py                  # API routes for ML inference
+│   └── detector.py              # Ensemble scoring logic
 │
 ├── bigdata/                     # MapReduce fallback and Hadoop dependencies
 ├── docker-compose.yml           # Full infrastructure orchestration file
+|── AI_DETECTION_FLOW.md         # Detailed AI Technical Specs
 └── start.sh                     # Start the full stack on local architectures
 ```
 
@@ -202,6 +209,7 @@ vaultiq/
 ## Prerequisites
 
 - Base Requirements: Node.js (v18+), Python (v3.11+)
+- OS Dependencies: `tesseract-ocr`, `poppler-utils`, `ffmpeg` (for OCR & Transcriptions)
 - Infrastructure Needs: Docker (+ Docker Compose), AWS S3 Bucket, Supabase instance keys.
 
 ---
@@ -235,6 +243,9 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=...
 S3_BUCKET_NAME=...
+
+# AI Service
+AI_SERVICE_URL=http://localhost:8000
 ```
 
 ### 3. Setup the Database Schema
@@ -252,7 +263,7 @@ Leverages Python and Node independently for fluid development speed without the 
 ```
 - Frontend bound to [http://localhost:3000](http://localhost:3000)
 - Backend bound to [http://localhost:5000](http://localhost:5000)
-- AI Service Docs bound to [http://localhost:8001/docs](http://localhost:8001/docs)
+- AI Service Docs bound to [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ### Full Scale Production Simulation (Docker Context)
 Use this option when you want to spin up the entire cluster inclusive of HDFS datanodes and Spark workers.
@@ -272,7 +283,7 @@ A highly secured proxy environment interfaces with internal domains. JWT Auth re
 - `POST /api/auth/login`
 - `POST /api/files/upload` - Multipart ingestion and encryption
 - `GET /api/files` - Decrypted byte retrieval
-- `POST /api/ai-detect/check` - Streams directly into python ML inferencing memory loops
+- `POST /api/ai-detect/` - Forwards to AI Service for deep content analysis
 - `GET /api/analytics` - Extracts daily HDFS insights
 
 ---
