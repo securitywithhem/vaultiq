@@ -14,9 +14,9 @@ export const fileService = {
     return response.data.data.file;
   },
 
-  getFiles: async (config = {}) => {
-    const response = await api.get('/api/files', config);
-    return response.data.data.files;
+  getFiles: async (page = 0, config = {}) => {
+    const response = await api.get('/api/files', { ...config, params: { page } });
+    return response.data.data; // { files, hasMore, page }
   },
 
   downloadFile: async (fileId, filename) => {

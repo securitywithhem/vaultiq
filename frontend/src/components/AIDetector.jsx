@@ -8,6 +8,7 @@ export default function AIDetector() {
   const [results, setResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [modelWarning, setModelWarning] = useState(null); // Fix 4: degraded-accuracy banner
 
   const handleFileChange = (e) => {
     if (e.target.files) {
@@ -26,6 +27,7 @@ export default function AIDetector() {
     try {
       const data = await detectFiles(selectedFiles);
       setResults(data.results);
+      setModelWarning(data.model_warning || null); // Fix 4
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -78,6 +80,21 @@ export default function AIDetector() {
         <div className={styles.loading}>
           <div className={styles.spinner}></div>
           <span>Analyzing documents using Deep Learning models...</span>
+        </div>
+      )}
+
+      {/* Fix 4: amber banner when LR model is absent and DummyLR is active */}
+      {modelWarning && (
+        <div style={{
+          background: '#78350f',
+          border: '1px solid #d97706',
+          borderRadius: '6px',
+          color: '#fde68a',
+          fontSize: '0.8rem',
+          padding: '8px 12px',
+          marginTop: '12px',
+        }} role="alert">
+          ⚠ Detection running in reduced accuracy mode. Contact admin.
         </div>
       )}
 

@@ -215,13 +215,15 @@ async def detect_files(
             except Exception:
                 pass
 
-    return JSONResponse(status_code=status.HTTP_200_OK, content=results)
-
-
-class TextDetectionRequest(Any):
-    """Schema for text-based detection requests."""
-    text: str
-    document_id: str | None = None
+    # Fix 4: wrap results so model_warning can be included at the top level
+    model_warning = (
+        "LR model unavailable — using dummy classifier. AI detection accuracy is degraded."
+        if detector.is_dummy_lr() else None
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"results": results, "model_warning": model_warning},
+    )
 
 
 @app.post("/detect/text", summary="Detect AI-generated content in raw text")
@@ -256,7 +258,12 @@ async def detect_text(request: dict[str, Any]) -> JSONResponse:
             content={
                 "document_id": request.get("document_id", "raw-text"),
                 "chunks_count": len(chunks),
-                **detection_result
+                **detection_result,
+                # Fix 4: surface degraded-accuracy warning when lr_model.pkl is absent
+                "model_warning": (
+                    "LR model unavailable — using dummy classifier. AI detection accuracy is degraded."
+                    if detector.is_dummy_lr() else None
+                ),
             }
         )
     except Exception as exc:

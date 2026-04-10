@@ -33,7 +33,13 @@ const Register = () => {
     
     if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
     if (!emailRegex.test(formData.email)) newErrors.email = "Valid email is required";
-    if (formData.password.length < 8) newErrors.password = "Minimum 8 characters";
+    // Fix 12: match backend complexity requirements
+    const pwComplexity = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d])/;
+    if (formData.password.length < 8) {
+      newErrors.password = "Minimum 8 characters";
+    } else if (!pwComplexity.test(formData.password)) {
+      newErrors.password = "Must contain uppercase, lowercase, a number, and a special character";
+    }
     if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Passwords must match";
     
     setErrors(newErrors);

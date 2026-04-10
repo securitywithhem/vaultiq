@@ -104,6 +104,7 @@ function asyncLog(eventType, payload) {
 
 // ─── POST /upload ───────────────────────────────────────────────────
 router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
+  const start = Date.now(); // Fix 6: latency tracking
   try {
     if (!req.file || !req.file.buffer) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -162,6 +163,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       fileSizeBytes: req.file.size,
       fileType: ext,
       ipAddress: req.ip,
+      durationMs: Date.now() - start, // Fix 6
     });
 
     logger.info('File uploaded', { requestId: req.id, fileId: fileRecord.id, size: req.file.size });
@@ -173,20 +175,35 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
 });
 
 // ─── GET / (list files) ─────────────────────────────────────────────
+const PAGE_SIZE = 20;
+
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    // Fix 9: pagination — ?page=0,1,2,…
+    const page = Math.max(0, parseInt(req.query.page, 10) || 0);
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
     const { data: files, error } = await supabaseAdmin
       .from('files')
       .select('id, filename, file_size, mime_type, sha256_hash, uploaded_at')
       .eq('user_id', req.user.id)
-      .order('uploaded_at', { ascending: false });
+      .order('uploaded_at', { ascending: false })
+      .range(from, to);
 
     if (error) {
       logger.error('DB error listing files', { requestId: req.id, error: error.message });
       return res.status(500).json({ error: 'Failed to fetch files' });
     }
 
-    return res.status(200).json({ data: { files: files || [] } });
+    const fetchedFiles = files || [];
+    return res.status(200).json({
+      data: {
+        files: fetchedFiles,
+        hasMore: fetchedFiles.length === PAGE_SIZE,
+        page
+      }
+    });
   } catch (err) {
     logger.error('List files error', { requestId: req.id, error: err.message });
     return res.status(500).json({ error: 'Internal server error' });
@@ -195,6 +212,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
 // ─── GET /:id/download ─────────────────────────────────────────────
 router.get('/:id/download', authenticateToken, validate(fileIdParams), async (req, res) => {
+  const start = Date.now(); // Fix 6: latency tracking
   try {
     // Fetch file record — IDOR protection: filter by user_id
     const { data: file, error: fetchError } = await supabaseAdmin
@@ -215,12 +233,42 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
     res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
 
     if (isStream) {
-      // ─── Large file: stream-mode decryption ───────────────
-      // S3 returns raw stream with prepended IV (first 16 bytes).
-      // IVExtractorStream reads IV, then pipes ciphertext through decipher.
+      // ─── Large file: buffer-mode decryption with integrity check ──
+      // Fix 1: Previously this streamed directly to res without verifying the
+      // SHA-256 hash, allowing tampered files to be served silently.
+      // We now buffer ALL decrypted output, verify hash, then send atomically.
+      const decryptedChunks = [];
+
       const ivExtractor = new IVExtractorStream((iv) => {
         const decipher = createDecipher(iv);
-        ivExtractor.pipe(decipher).pipe(res);
+
+        decipher.on('data', (chunk) => decryptedChunks.push(chunk));
+
+        decipher.on('end', () => {
+          const plaintext = Buffer.concat(decryptedChunks);
+          const hash = sha256(plaintext);
+
+          if (hash !== file.sha256_hash) {
+            logger.error('Integrity check failed (large file)', {
+              requestId: req.id, fileId: file.id, expected: file.sha256_hash, got: hash
+            });
+            if (!res.headersSent) {
+              res.status(409).json({ error: 'File integrity check failed. File may have been tampered with.' });
+            }
+            return;
+          }
+
+          asyncLog('file_download', {
+            userId: req.user.id,
+            fileName: file.filename,
+            fileSizeBytes: file.file_size,
+            ipAddress: req.ip,
+            durationMs: Date.now() - start, // Fix 6
+          });
+
+          res.write(plaintext);
+          res.end();
+        });
 
         decipher.on('error', (decErr) => {
           logger.error('Decryption stream error', { requestId: req.id, error: decErr.message });
@@ -228,6 +276,8 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
             res.status(500).json({ error: 'Decryption failed' });
           }
         });
+
+        ivExtractor.pipe(decipher);
       });
 
       body.pipe(ivExtractor);
@@ -239,14 +289,7 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
         }
       });
 
-      asyncLog('file_download', {
-        userId: req.user.id,
-        fileName: file.filename,
-        fileSizeBytes: file.file_size,
-        ipAddress: req.ip,
-      });
-
-      return; // Response handled by pipe
+      return; // Response handled by decipher 'end' event
     }
 
     // ─── Small file: buffer-mode decryption ───────────────
@@ -270,6 +313,7 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
       fileName: file.filename,
       fileSizeBytes: file.file_size,
       ipAddress: req.ip,
+      durationMs: Date.now() - start, // Fix 6
     });
 
     return res.send(plaintext);
@@ -281,6 +325,7 @@ router.get('/:id/download', authenticateToken, validate(fileIdParams), async (re
 
 // ─── DELETE /:id ────────────────────────────────────────────────────
 router.delete('/:id', authenticateToken, validate(fileIdParams), async (req, res) => {
+  const start = Date.now(); // Fix 6: latency tracking
   try {
     // IDOR protection: filter by user_id at query level
     const { data: file, error: fetchError } = await supabaseAdmin
@@ -311,6 +356,7 @@ router.delete('/:id', authenticateToken, validate(fileIdParams), async (req, res
       fileName: file.filename,
       fileSizeBytes: file.file_size,
       ipAddress: req.ip,
+      durationMs: Date.now() - start, // Fix 6
     });
 
     logger.info('File deleted', { requestId: req.id, fileId: file.id });

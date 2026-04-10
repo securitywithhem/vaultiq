@@ -1,3 +1,4 @@
+// UNUSED — safe to delete
 /**
  * @file aiDetectionService.js
  * @description API service calls for text-based AI detection

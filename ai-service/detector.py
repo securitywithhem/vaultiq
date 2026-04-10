@@ -37,11 +37,12 @@ _gpt2_tokenizer = None
 _roberta_model = None
 _roberta_tokenizer = None
 _lr_model = None
+_using_dummy_lr: bool = False  # Fix 4: track whether LR is real or dummy
 
 
 def load_models() -> None:
     """Pre-load all required models for the ensemble."""
-    global _gpt2_model, _gpt2_tokenizer, _roberta_model, _roberta_tokenizer, _lr_model
+    global _gpt2_model, _gpt2_tokenizer, _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr
 
     start_time = time.time()
     logger.info("Loading NLP models. This might take a moment...")
@@ -61,9 +62,16 @@ def load_models() -> None:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     if LR_MODEL_PATH.exists():
         _lr_model = joblib.load(LR_MODEL_PATH)
+        _using_dummy_lr = False
         logger.info(f"Loaded Logistic Regression from {LR_MODEL_PATH}")
     else:
-        logger.info("lr_model.pkl not found. Creating a DUMMY model.")
+        # Fix 4: emit a visible warning so degraded accuracy is never silent
+        logger.warning(
+            "⚠️  lr_model.pkl not found — LR model running in DUMMY MODE. "
+            "AI detection accuracy is degraded: the LR component always returns 0.5. "
+            "Train and place lr_model.pkl in the models/ directory to enable full accuracy."
+        )
+        _using_dummy_lr = True
 
         class DummyLR:
             def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -91,6 +99,11 @@ def is_model_loaded() -> bool:
             _lr_model,
         )
     )
+
+
+def is_dummy_lr() -> bool:
+    """Fix 4: Return True if the LR model is the dummy fallback (lr_model.pkl absent)."""
+    return _using_dummy_lr
 
 
 def extract_features(text: str) -> np.ndarray:
