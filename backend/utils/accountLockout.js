@@ -34,7 +34,7 @@ async function isAccountLocked(userId) {
     return data.attempts >= MAX_LOGIN_ATTEMPTS;
   } catch (err) {
     console.error('[accountLockout.isAccountLocked]', err.message);
-    return false; // Fail open if we can't check
+    return true; // Fix 10: fail closed — deny login if lockout state is unknown
   }
 }
 

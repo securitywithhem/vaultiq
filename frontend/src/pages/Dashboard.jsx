@@ -10,7 +10,7 @@ import styles from './Dashboard.module.css';
 
 const Dashboard = () => {
 
-  const { files, isLoading, fetchFiles, addFileOptimistic, deleteFile } = useFiles();
+  const { files, isLoading, isLoadingMore, hasMore, fetchFiles, loadMore, addFileOptimistic, deleteFile } = useFiles();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,16 +55,29 @@ const Dashboard = () => {
               submessage="Upload your first encrypted file above." 
             />
           ) : (
-            <div className={styles.grid}>
-              {sortedFiles.map(file => (
-                <FileCard 
-                  key={file.id} 
-                  file={file} 
-                  onDownload={handleDownload}
-                  onDelete={deleteFile}
-                />
-              ))}
-            </div>
+            <>
+              <div className={styles.grid}>
+                {sortedFiles.map(file => (
+                  <FileCard
+                    key={file.id}
+                    file={file}
+                    onDownload={handleDownload}
+                    onDelete={deleteFile}
+                  />
+                ))}
+              </div>
+              {hasMore && (
+                <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                  <button
+                    onClick={loadMore}
+                    disabled={isLoadingMore}
+                    className={styles.loadMoreBtn}
+                  >
+                    {isLoadingMore ? 'Loading...' : 'Load More'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
       </main>

@@ -12,6 +12,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { registerSchema, loginSchema } = require('../validators/auth.schema');
 const { isAccountLocked, recordFailedLogin, clearFailedLogins } = require('../utils/accountLockout');
+const { logEvent } = require('../utils/hdfsLogger');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -75,6 +76,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
 
 // ─── POST /login ────────────────────────────────────────────────────
 router.post('/login', validate(loginSchema), async (req, res) => {
+  const start = Date.now(); // Fix 7: latency tracking for login events
   try {
     const { email, password } = req.body;
 
@@ -105,6 +107,12 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       if (userLookup?.id) {
         await recordFailedLogin(userLookup.id, email);
       }
+      // Fix 7: log failed login for user behaviour analytics
+      logEvent('login_failed', {
+        userId:    userLookup?.id ?? null,
+        ipAddress: req.ip,
+        durationMs: Date.now() - start,
+      }).catch(() => {});
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -130,6 +138,13 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
     res.cookie('vaultiq_access_token', token, { ...COOKIE_OPTS, maxAge: 60 * 60 * 1000 });
     res.cookie('vaultiq_refresh_token', refreshToken, { ...COOKIE_OPTS, maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+    // Fix 7: log successful login for user behaviour analytics
+    logEvent('login_success', {
+      userId:    user.id,
+      ipAddress: req.ip,
+      durationMs: Date.now() - start,
+    }).catch(() => {});
 
     logger.info('User logged in', { requestId: req.id, userId: user.id });
     return res.status(200).json({ data: { user } });

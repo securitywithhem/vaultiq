@@ -11,10 +11,17 @@ const registerSchema = {
       'string.email': 'Valid email is required',
       'any.required': 'Email is required'
     }),
-    password: Joi.string().min(8).max(128).required().messages({
-      'string.min': 'Password must be at least 8 characters',
-      'any.required': 'Password is required'
-    }),
+    // Fix 12: require complexity — uppercase, lowercase, digit, special char
+    password: Joi.string()
+      .min(8)
+      .max(128)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d])/)
+      .required()
+      .messages({
+        'string.min': 'Password must be at least 8 characters',
+        'string.pattern.base': 'Password must contain uppercase, lowercase, a number, and a special character',
+        'any.required': 'Password is required'
+      }),
     fullName: Joi.string().trim().min(1).max(100).required().messages({
       'any.required': 'Full name is required'
     })
