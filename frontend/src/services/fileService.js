@@ -45,5 +45,10 @@ export const fileService = {
   deleteFile: async (fileId) => {
     const response = await api.delete(`/api/files/${fileId}`);
     return response.data;
+  },
+
+  getStats: async () => {
+    const response = await api.get('/api/files/stats');
+    return response.data.data; // { totalFiles, storageBytes }
   }
 };

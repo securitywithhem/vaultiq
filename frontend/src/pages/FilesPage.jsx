@@ -46,7 +46,7 @@ const FilesPage = () => {
   }, [fetchFiles]);
 
   const sortedFiles = useMemo(
-    () => [...files].sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at)),
+    () => (Array.isArray(files) ? [...files] : []).sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at)),
     [files],
   );
 

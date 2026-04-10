@@ -14,8 +14,8 @@ export const useFiles = () => {
     setPage(0);
     try {
       const data = await fileService.getFiles(0, { signal });
-      setFiles(data.files);
-      setHasMore(data.hasMore);
+      setFiles(Array.isArray(data?.files) ? data.files : []);
+      setHasMore(data?.hasMore ?? false);
     } catch (err) {
       if (err.name !== 'CanceledError') {
         toast.error('Failed to load files');
@@ -31,8 +31,8 @@ export const useFiles = () => {
     const nextPage = page + 1;
     try {
       const data = await fileService.getFiles(nextPage);
-      setFiles(prev => [...prev, ...data.files]);
-      setHasMore(data.hasMore);
+      setFiles(prev => [...prev, ...(Array.isArray(data?.files) ? data.files : [])]);
+      setHasMore(data?.hasMore ?? false);
       setPage(nextPage);
     } catch {
       toast.error('Failed to load more files');

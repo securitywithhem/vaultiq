@@ -174,6 +174,32 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
   }
 });
 
+// ─── GET /stats ─────────────────────────────────────────────────────
+router.get('/stats', authenticateToken, async (req, res) => {
+  try {
+    const { data, error, count } = await supabaseAdmin
+      .from('files')
+      .select('file_size', { count: 'exact' })
+      .eq('user_id', req.user.id);
+
+    if (error) {
+      logger.error('DB error on file stats', { requestId: req.id, error: error.message });
+      return res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+
+    const files        = data || [];
+    const totalFiles   = count ?? files.length;
+    const storageBytes = files.reduce((sum, f) => sum + (f.file_size || 0), 0);
+
+    return res.status(200).json({
+      data: { totalFiles, storageBytes }
+    });
+  } catch (err) {
+    logger.error('Stats error', { requestId: req.id, error: err.message });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET / (list files) ─────────────────────────────────────────────
 const PAGE_SIZE = 20;
 
