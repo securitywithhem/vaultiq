@@ -1,67 +1,68 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { authService } from '../services/authService';
+
+const TOKEN_KEY = 'vaultiq_token';
+const USER_KEY  = 'vaultiq_user';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser]                       = useState(null);
+  const [isLoading, setIsLoading]             = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Check authentication status on mount
-  const checkAuth = useCallback(async () => {
-    try {
-      // Try to get current user (will fail with 401 if no valid cookie)
-      const data = await authService.getMe();
-      setUser(data.user);
-      setIsAuthenticated(true);
-    } catch (error) {
-      // No valid token cookie, user is not authenticated
-      setUser(null);
-      setIsAuthenticated(false);
-    } finally {
-      setIsLoading(false);
+  // Restore session from localStorage on mount (synchronous — no flicker)
+  useEffect(() => {
+    const token  = localStorage.getItem(TOKEN_KEY);
+    const stored = localStorage.getItem(USER_KEY);
+    if (token && stored) {
+      try {
+        setUser(JSON.parse(stored));
+        setIsAuthenticated(true);
+      } catch {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+      }
     }
+    setIsLoading(false);
   }, []);
 
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  const login = async (email, password) => {
-    const data = await authService.login(email, password);
-    // Token is stored in httpOnly cookie automatically by backend
-    setUser(data.user);
-    setIsAuthenticated(true);
-  };
-
-  const register = async (email, password, fullName) => {
-    const data = await authService.register(email, password, fullName);
-    // Token is stored in httpOnly cookie automatically by backend
-    setUser(data.user);
-    setIsAuthenticated(true);
-  };
-
-  const logout = useCallback(async () => {
-    try {
-      await authService.logout();
-    } catch (err) {
-      console.error('[AuthContext.logout]', err.message);
+  /**
+   * login — compares email + password against stored user.
+   * Throws a plain Error on mismatch so callers can show a toast.
+   */
+  const login = useCallback((email, password) => {
+    const stored = localStorage.getItem(USER_KEY);
+    if (!stored) {
+      throw new Error('No account found. Please sign up first.');
     }
-    // Cookies are cleared by backend
+    const saved = JSON.parse(stored);
+    if (saved.email !== email || saved.password !== password) {
+      throw new Error('Incorrect email or password.');
+    }
+    localStorage.setItem(TOKEN_KEY, 'loggedin');
+    setUser(saved);
+    setIsAuthenticated(true);
+  }, []);
+
+  /**
+   * register — persists user to localStorage.
+   * Does NOT auto-login; caller redirects to /login.
+   */
+  const register = useCallback((fullName, email, password) => {
+    localStorage.setItem(USER_KEY, JSON.stringify({ fullName, email, password }));
+  }, []);
+
+  /**
+   * logout — clears token and resets state.
+   */
+  const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
     setIsAuthenticated(false);
   }, []);
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      isLoading,
-      isAuthenticated,
-      login,
-      register,
-      logout
-    }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
