@@ -1,7 +1,5 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-
-const TOKEN_KEY = 'vaultiq_token';
-const USER_KEY  = 'vaultiq_user';
+import { authService } from '../services/authService';
 
 export const AuthContext = createContext();
 
@@ -10,53 +8,64 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading]             = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Restore session from localStorage on mount (synchronous — no flicker)
+  // ── Restore session on mount ─────────────────────────────────────────────
+  // Backend uses HttpOnly cookies — we can't read them from JS.
+  // Call /api/auth/me: if the cookie is valid the backend returns the user;
+  // if not (401) the user is not logged in. Either way we set isLoading=false.
   useEffect(() => {
-    const token  = localStorage.getItem(TOKEN_KEY);
-    const stored = localStorage.getItem(USER_KEY);
-    if (token && stored) {
-      try {
-        setUser(JSON.parse(stored));
-        setIsAuthenticated(true);
-      } catch {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-      }
-    }
-    setIsLoading(false);
+    let cancelled = false;
+
+    authService.getMe()
+      .then(({ user: me }) => {
+        if (!cancelled) {
+          setUser(me);
+          setIsAuthenticated(true);
+        }
+      })
+      .catch(() => {
+        // 401 = no valid session — expected on first visit / after logout
+        if (!cancelled) {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, []);
 
-  /**
-   * login — compares email + password against stored user.
-   * Throws a plain Error on mismatch so callers can show a toast.
-   */
-  const login = useCallback((email, password) => {
-    const stored = localStorage.getItem(USER_KEY);
-    if (!stored) {
-      throw new Error('No account found. Please sign up first.');
-    }
-    const saved = JSON.parse(stored);
-    if (saved.email !== email || saved.password !== password) {
-      throw new Error('Incorrect email or password.');
-    }
-    localStorage.setItem(TOKEN_KEY, 'loggedin');
-    setUser(saved);
+  // ── login ────────────────────────────────────────────────────────────────
+  // Calls POST /api/auth/login. Backend sets HttpOnly cookies on success.
+  // Throws an Error (with .response attached) on failure so the caller can
+  // display a toast with the server's error message.
+  const login = useCallback(async (email, password) => {
+    const { user: me } = await authService.login(email, password);
+    setUser(me);
     setIsAuthenticated(true);
+    return me;
   }, []);
 
-  /**
-   * register — persists user to localStorage.
-   * Does NOT auto-login; caller redirects to /login.
-   */
-  const register = useCallback((fullName, email, password) => {
-    localStorage.setItem(USER_KEY, JSON.stringify({ fullName, email, password }));
+  // ── register ─────────────────────────────────────────────────────────────
+  // Calls POST /api/auth/register. Backend sets cookies on success so the
+  // user is immediately authenticated — no need to redirect to /login first.
+  const register = useCallback(async (fullName, email, password) => {
+    const { user: me } = await authService.register(email, password, fullName);
+    setUser(me);
+    setIsAuthenticated(true);
+    return me;
   }, []);
 
-  /**
-   * logout — clears token and resets state.
-   */
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
+  // ── logout ───────────────────────────────────────────────────────────────
+  // Calls POST /api/auth/logout to clear the HttpOnly cookies server-side,
+  // then resets local state.
+  const logout = useCallback(async () => {
+    try {
+      await authService.logout();
+    } catch (_) {
+      // Ignore — even if the request fails we still clear local state
+    }
     setUser(null);
     setIsAuthenticated(false);
   }, []);

@@ -64,14 +64,17 @@ const Login = () => {
   // Already logged in — skip the login page
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      login(email, password);
+      await login(email, password);
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      toast.error(err.message);
+      // Prefer the server's error message (e.g. "Invalid credentials",
+      // "Account temporarily locked"), fall back to the axios/network message.
+      const msg = err.response?.data?.error ?? err.message ?? 'Login failed';
+      toast.error(msg);
       setIsLoading(false);
     }
   };

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import BrandPanel from '../components/ui/BrandPanel';
@@ -168,7 +169,7 @@ const Signup = () => {
     return e;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) {
@@ -177,8 +178,16 @@ const Signup = () => {
       return;
     }
     setIsLoading(true);
-    register(form.fullName, form.email, form.password);
-    navigate('/login', { replace: true });
+    try {
+      await register(form.fullName, form.email, form.password);
+      // Backend sets HttpOnly cookies on registration — user is immediately
+      // authenticated, so go straight to the dashboard.
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      const msg = err.response?.data?.error ?? err.message ?? 'Registration failed';
+      toast.error(msg);
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -12,10 +12,15 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle 401 - clear auth and redirect to login
+    // Handle 401 — redirect to login only when on a protected page.
+    // On /login or /signup the 401 is expected (no cookie yet) and must
+    // not cause an infinite redirect loop.
     if (error.response && error.response.status === 401) {
-      // Cookies are automatically cleared by httpOnly flag
-      window.location.href = '/login';
+      const PUBLIC = ['/login', '/signup'];
+      const onPublic = PUBLIC.some((p) => window.location.pathname.startsWith(p));
+      if (!onPublic) {
+        window.location.href = '/login';
+      }
     }
 
     // Fallback if backend is completely down

@@ -160,7 +160,7 @@ const Analytics = () => {
   const handleSparkRun = async () => {
     setSparkRunning(true);
     try {
-      await api.post('/api/analytics/refresh');
+      await api.post('/api/analytics/trigger');
       setTimeout(() => { fetchData(); setSparkRunning(false); }, 3_000);
     } catch {
       setSparkRunning(false);

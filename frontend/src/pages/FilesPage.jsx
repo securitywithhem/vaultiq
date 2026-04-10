@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import AppNavbar from '../components/ui/AppNavbar';
 import UploadZone from '../components/UploadZone';
 import FileCard from '../components/FileCard';
@@ -39,7 +38,6 @@ const VaultIcon = () => (
 
 const FilesPage = () => {
   const { files, isLoading, fetchFiles, addFileOptimistic, deleteFile } = useFiles();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const controller = new AbortController();
