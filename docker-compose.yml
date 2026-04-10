@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   db:
@@ -109,7 +109,7 @@ services:
       - vaultiq-net
 
   spark-master:
-    image: bitnami/spark:3
+    image: bitnami/spark:latest
     container_name: spark-master
     restart: unless-stopped
     environment:
@@ -127,7 +127,7 @@ services:
       - vaultiq-net
 
   spark-worker:
-    image: bitnami/spark:3
+    image: bitnami/spark:latest
     container_name: spark-worker
     restart: unless-stopped
     depends_on:
