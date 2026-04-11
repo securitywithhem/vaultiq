@@ -1,0 +1,116 @@
+{
+  "detections": [
+    {
+      "timestamp": "2026-04-10T21:06:19.750Z",
+      "user_id": "269fc4ac-4418-416b-a8cf-d1d9d1885c18",
+      "filename": "_Counselling_Letter_BTECHMBADSY-20243314.pdf",
+      "verdict": "ai_generated",
+      "score": 0.84,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-10T21:06:19.750Z",
+      "user_id": "269fc4ac-4418-416b-a8cf-d1d9d1885c18",
+      "filename": "_Registration_Form__BTECHMBADSY-20243314.pdf",
+      "verdict": "ai_generated",
+      "score": 0.85,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-10T21:07:03.783Z",
+      "user_id": "269fc4ac-4418-416b-a8cf-d1d9d1885c18",
+      "filename": "_Admission_Form__BTECHMBADSY-20243314.pdf",
+      "verdict": "ai_generated",
+      "score": 0.79,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-10T21:07:03.783Z",
+      "user_id": "269fc4ac-4418-416b-a8cf-d1d9d1885c18",
+      "filename": "_Counselling_Letter_BTECHMBADSY-20243314.pdf",
+      "verdict": "ai_generated",
+      "score": 0.84,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-10T21:07:03.783Z",
+      "user_id": "269fc4ac-4418-416b-a8cf-d1d9d1885c18",
+      "filename": "_Registration_Form__BTECHMBADSY-20243314.pdf",
+      "verdict": "ai_generated",
+      "score": 0.85,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-10T21:09:28.991Z",
+      "user_id": "269fc4ac-4418-416b-a8cf-d1d9d1885c18",
+      "filename": "_Registration_Form__BTECHMBADSY-20243314.pdf",
+      "verdict": "ai_generated",
+      "score": 0.85,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T07:00:27.285Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "AI_Detection_Dataset_Training_Guide.docx",
+      "verdict": "mixed",
+      "score": 0.5,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-11T07:03:47.634Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.5,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T07:16:58.825Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.49,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T07:54:51.092Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.49,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T08:35:32.964Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.49,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T09:07:56.410Z",
+      "user_id": "b8e36a5f-b6ac-4057-aeb7-348e4086bb81",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.49,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T09:15:52.004Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.49,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-11T11:01:44.022Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "test.docx",
+      "verdict": "mixed",
+      "score": 0.49,
+      "confidence": "low"
+    }
+  ]
+}

@@ -1,48 +1,151 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
+/* ─────────────────────────────────────────────────────────────────────────────
+   VaultIQ Design System  ·  Apple × Vercel dark palette
+   Font loaded non-blocking in index.html — no @import here (was render-blocking)
+   All values defined once — never hardcode hex in components.
+───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg-primary: #0A0F1E;
-  --bg-surface: #111827;
-  --bg-elevated: #1F2937;
-  --bg-border: #374151;
-  
-  --text-primary: #F9FAFB;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
-  
-  --accent-blue: #3B82F6;
-  --accent-blue-hover: #2563EB;
-  --accent-green: #10B981;
-  --accent-red: #EF4444;
-  --accent-amber: #F59E0B;
-  
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  
-  --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
-  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-  --shadow-elevated: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.5);
+  /* ── Backgrounds ── Vercel-grade black base, Apple-grade surfaces */
+  --bg-primary:   #000000;          /* Pure black — Vercel */
+  --bg-surface:   #0a0a0a;          /* Card base */
+  --bg-elevated:  #141414;          /* Elevated elements */
+  --bg-modal:     #0a0a0a;
+  --bg-hover:     rgba(255,255,255,0.04);
+  --bg-active:    rgba(255,255,255,0.07);
 
-  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* ── Borders ── */
+  --border:          rgba(255,255,255,0.08);
+  --border-strong:   rgba(255,255,255,0.15);
+  --border-focus:    rgba(10,132,255,0.50);
+
+  /* ── Text ── Apple dark-mode exact values */
+  --text-primary:   #ededed;
+  --text-secondary: rgba(235,235,245,0.60);
+  --text-muted:     rgba(235,235,245,0.30);
+  --text-link:      #0a84ff;
+
+  /* ── Apple System Colors ── */
+  --blue:    #0a84ff;
+  --blue-dk: #0071e3;
+  --green:   #30d158;
+  --red:     #ff453a;
+  --amber:   #ff9f0a;
+  --purple:  #bf5af2;
+  --teal:    #64d2ff;
+  --indigo:  #5e5ce6;
+
+  /* Semantic aliases */
+  --accent-blue:       var(--blue);
+  --accent-blue-hover: var(--blue-dk);
+  --accent-green:      var(--green);
+  --accent-red:        var(--red);
+  --accent-amber:      var(--amber);
+  --accent-purple:     var(--purple);
+
+  /* Tinted fills */
+  --fill-blue:   rgba(10,132,255,0.10);
+  --fill-green:  rgba(48,209,88,0.10);
+  --fill-red:    rgba(255,69,58,0.10);
+  --fill-amber:  rgba(255,159,10,0.10);
+  --fill-purple: rgba(191,90,242,0.10);
+
+  /* ── Typography ── System fonts — no external load, instant render */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+               'Inter', 'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code',
+               'Consolas', monospace;
+
+  /* Type scale */
+  --fs-display:  2rem;        /* 32px  · Hero headings */
+  --fs-title1:   1.5rem;      /* 24px  · Page titles */
+  --fs-title2:   1.25rem;     /* 20px  · Section headings */
+  --fs-title3:   1.0625rem;   /* 17px  · Card headings */
+  --fs-headline: 1rem;        /* 16px  · Emphasized body */
+  --fs-body:     0.9375rem;   /* 15px  · Primary body */
+  --fs-callout:  0.875rem;    /* 14px  · Secondary body */
+  --fs-subhead:  0.875rem;    /* 14px  · Labels */
+  --fs-footnote: 0.8125rem;   /* 13px  · Supporting text */
+  --fs-caption:  0.75rem;     /* 12px  · Captions, badges */
+  --fs-micro:    0.6875rem;   /* 11px  · Very small labels */
+
+  /* Font weights */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* ── Spacing (8px grid) ── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  24px;
+  --sp-8:  32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* ── Radii ── Apple-grade rounding */
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   14px;
+  --radius-lg:   18px;
+  --radius-xl:   24px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ── deeper than before for more premium feel */
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-card:   0 4px 24px rgba(0,0,0,0.6);
+  --shadow-raised: 0 8px 40px rgba(0,0,0,0.7);
+  --shadow-modal:  0 24px 80px rgba(0,0,0,0.8);
+  --shadow-glow-blue:  0 0 0 3px rgba(10,132,255,0.20);
+  --shadow-glow-red:   0 0 0 3px rgba(255,69,58,0.20);
+
+  /* ── Motion — composite-only, never 'all' ── */
+  --ease:     cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in:  cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --spring:   cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+
+  /* IMPORTANT: only composite properties — never 'all' */
+  --transition: background-color var(--duration-base) var(--ease),
+                border-color     var(--duration-base) var(--ease),
+                color            var(--duration-base) var(--ease),
+                opacity          var(--duration-base) var(--ease),
+                box-shadow       var(--duration-base) var(--ease);
+
+  /* Legacy aliases */
+  --bg-border: var(--border);
+  --bg-base:   var(--bg-primary);
 }
 
-* {
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+/* ── Base ───────────────────────────────────────────────────────────────── */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+}
+
 body {
   font-family: var(--font-sans);
-  background-color: var(--bg-primary);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-regular);
+  line-height: 1.5;
   color: var(--text-primary);
+  background-color: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.5;
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -53,55 +156,71 @@ body {
   min-height: 100vh;
 }
 
+/* ── Typography ─────────────────────────────────────────────────────────── */
 h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   line-height: 1.2;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
 }
+
+h1 { font-size: var(--fs-display);  font-weight: var(--fw-bold);     letter-spacing: -0.8px; }
+h2 { font-size: var(--fs-title1);   font-weight: var(--fw-bold);     letter-spacing: -0.5px; }
+h3 { font-size: var(--fs-title2);   font-weight: var(--fw-semibold); letter-spacing: -0.3px; }
+h4 { font-size: var(--fs-title3);   font-weight: var(--fw-semibold); }
+h5 { font-size: var(--fs-headline); font-weight: var(--fw-semibold); }
+h6 { font-size: var(--fs-body);     font-weight: var(--fw-semibold); }
+
+p { line-height: 1.6; }
 
 a {
-  color: var(--accent-blue);
+  color: var(--text-link);
   text-decoration: none;
-  transition: var(--transition);
+  transition: color var(--duration-base) var(--ease);
 }
+a:hover { color: var(--blue-dk); }
 
-a:hover {
-  color: var(--accent-blue-hover);
-}
-
+/* ── Elements ───────────────────────────────────────────────────────────── */
 button {
   font-family: var(--font-sans);
+  font-size: var(--fs-callout);
+  font-weight: var(--fw-medium);
   cursor: pointer;
   border: none;
   background: none;
   transition: var(--transition);
+  letter-spacing: -0.1px;
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-input {
+input, textarea, select {
   font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  color: var(--text-primary);
 }
 
-/* Animations */
-@keyframes pulseGlow {
-  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar               { width: 4px; height: 4px; }
+::-webkit-scrollbar-track         { background: transparent; }
+::-webkit-scrollbar-thumb         { background: rgba(255,255,255,0.10); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover   { background: rgba(255,255,255,0.18); }
 
+/* ── Utility animations — GPU-safe only ─────────────────────────────────── */
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0);    }
 }
-
-@keyframes typewriter {
-  from { width: 0; }
-  to { width: 100%; }
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
 }

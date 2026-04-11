@@ -144,6 +144,7 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       .insert({
         user_id: req.user.id,
         filename: sanitizedFilename,
+        original_filename: req.file.originalname, // Fallback for schema mismatch
         s3_key: s3Key,
         file_size: req.file.size,
         mime_type: req.file.mimetype || 'application/octet-stream',
@@ -153,8 +154,15 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       .single();
 
     if (dbError) {
-      logger.error('DB error on upload', { requestId: req.id, error: dbError.message });
-      return res.status(500).json({ error: 'Database error storing file record' });
+      logger.error('DB error on upload (Detailed)', { 
+        requestId: req.id, 
+        code: dbError.code, 
+        message: dbError.message,
+        details: dbError.details,
+        hint: dbError.hint,
+        userId: req.user.id
+      });
+      return res.status(500).json({ error: `Database error: ${dbError.message}` });
     }
 
     asyncLog('file_upload', {
@@ -367,4 +375,41 @@ router.delete('/:id', authenticateToken, validate(fileIdParams), async (req, res
   }
 });
 
+// ─── DELETE /bulk ────────────────────────────────────────────────────────────
+router.delete('/bulk', authenticateToken, async (req, res) => {
+  try {
+    const { fileIds } = req.body;
+    if (!Array.isArray(fileIds) || fileIds.length === 0)
+      return res.status(400).json({ error: 'fileIds must be a non-empty array' });
+    if (fileIds.length > 50)
+      return res.status(400).json({ error: 'Maximum 50 files per bulk delete' });
+
+    const { data: files, error: fetchErr } = await supabaseAdmin
+      .from('files')
+      .select('id, s3_key, filename, file_size')
+      .in('id', fileIds)
+      .eq('user_id', req.user.id);
+
+    if (fetchErr || !files?.length)
+      return res.status(404).json({ error: 'No matching files found' });
+
+    const deleted = [], failed = [];
+    for (const file of files) {
+      try {
+        await deleteFromS3(file.s3_key);
+        deleted.push(file.id);
+      } catch { failed.push(file.id); }
+    }
+
+    if (deleted.length) {
+      await supabaseAdmin.from('files').delete().in('id', deleted).eq('user_id', req.user.id);
+    }
+
+    logger.info('Bulk delete', { requestId: req.id, deleted: deleted.length, failed: failed.length });
+    return res.status(200).json({ data: { deleted: deleted.length, failed: failed.length } });
+  } catch (err) {
+    logger.error('Bulk delete error', { error: err.message });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
 module.exports = router;

@@ -9,14 +9,23 @@ const TextAiDetection = () => {
       <Navbar />
 
       <main className={styles.main}>
+        {/* ── Header ── */}
         <div className={styles.header}>
-          <h1 className={styles.title}>AI Deep Scan</h1>
-          <p className={styles.subtitle}>Upload your documents to detect AI-generated content footprints before encryption.</p>
+          <div>
+            <h1 className={styles.title}>AI Deep Scan</h1>
+            <p className={styles.subtitle}>
+              Detect AI-generated content in your documents using RoBERTa + statistical ensemble models.
+            </p>
+          </div>
+          <div className={styles.modelPills}>
+            <span className={styles.pill}>RoBERTa</span>
+            <span className={styles.pill}>GPT-2 Perplexity</span>
+            <span className={styles.pill}>Statistical LR</span>
+          </div>
         </div>
 
-        <div style={{ marginTop: '20px' }}>
-          <AIDetector />
-        </div>
+        {/* ── Full-width detector ── */}
+        <AIDetector />
       </main>
     </div>
   );

@@ -49,3 +49,23 @@ __pycache__/
 .opencode.json
 .cursor/
 GEMINI.md
+ai-service/datasets/
+ai-service/models/*.pkl
+ai-service/models/*.joblib
+
+# Temporary session documentation (generated during debugging)
+DIAGNOSE_*.md
+AUTH_FIX*.md
+FIXES_APPLIED.md
+FINAL_SUMMARY.md
+FIX_AND_TEST*.md
+PROJECT_READY.md
+PROJECT_RUNNING.md
+QUICK_START.md
+RUN_PROJECT.md
+SETUP_AND_RUN.md
+*_FIXES_SUMMARY.md
+*_SUMMARY.md
+SERVICES_LIVE.txt
+START_NOW.txt
+START_ALL.sh

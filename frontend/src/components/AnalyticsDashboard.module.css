@@ -1,256 +1,271 @@
-/* AnalyticsDashboard.module.css */
-
-/* ── Page shell ──────────────────────────────────────────────────── */
+/* ── Page shell ─────────────────────────────────────────────────────────── */
 .page {
   min-height: 100vh;
-  background: var(--bg-base, #0f1117);
-  color: var(--text-primary, #f9fafb);
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
+  padding: var(--sp-8) var(--sp-6) var(--sp-16);
 }
 
-/* ── Header ──────────────────────────────────────────────────────── */
+/* ── Header ─────────────────────────────────────────────────────────────── */
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-8);
+  padding-bottom: var(--sp-6);
+  border-bottom: 1px solid var(--border);
 }
 
 .titleRow {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--sp-3);
   flex-wrap: wrap;
 }
 
 .title {
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-size: var(--fs-title1);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.5px;
   margin: 0;
-  color: var(--text-primary, #f9fafb);
+  color: var(--text-primary);
 }
 
 .subtitle {
-  font-size: 0.8rem;
-  color: var(--text-muted, #6b7280);
-  margin: 0.25rem 0 0;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin: 0;
+  font-family: var(--font-sans);
 }
 
+/* ── Source badges ──────────────────────────────────────────────────────── */
 .sourceBadge {
-  display: inline-block;
-  padding: 0.2rem 0.65rem;
-  border-radius: 9999px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
-.badgeHdfs      { background: #1e3a5f; color: #60a5fa; }
-.badgeLocal     { background: #292524; color: #f59e0b; }
-.badgeLive      { background: #14532d; color: #4ade80; }
-.badgeUnknown   { background: #374151; color: #9ca3af; }
+.badgeHdfs    { background: var(--fill-blue);   color: var(--blue); border: 1px solid rgba(10,132,255,0.2); }
+.badgeLocal   { background: var(--fill-amber);  color: var(--amber); border: 1px solid rgba(255,159,10,0.2); }
+.badgeLive    { background: var(--fill-green);  color: var(--green); border: 1px solid rgba(48,209,88,0.2); }
+.badgeUnknown { background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border); }
 
-/* ── Buttons ─────────────────────────────────────────────────────── */
+/* ── Buttons ────────────────────────────────────────────────────────────── */
 .primaryBtn {
-  padding: 0.55rem 1.25rem;
-  border-radius: 8px;
+  padding: 9px var(--sp-5);
+  border-radius: var(--radius-sm);
   border: none;
-  background: #378ADD;
+  background: var(--blue);
   color: #fff;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: var(--fs-callout);
+  font-weight: var(--fw-semibold);
+  font-family: var(--font-sans);
+  letter-spacing: -0.1px;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: var(--transition);
   white-space: nowrap;
 }
-
-.primaryBtn:disabled { opacity: 0.5; cursor: default; }
-.primaryBtn:not(:disabled):hover { opacity: 0.85; }
+.primaryBtn:disabled { opacity: 0.45; cursor: default; }
+.primaryBtn:not(:disabled):hover { background: var(--blue-dk); }
 
 .retryBtn {
-  margin-top: 1rem;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #374151;
+  margin-top: var(--sp-4);
+  padding: 8px var(--sp-4);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
   background: transparent;
-  color: #9ca3af;
-  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-size: var(--fs-callout);
+  font-family: var(--font-sans);
   cursor: pointer;
+  transition: var(--transition);
 }
+.retryBtn:hover { border-color: var(--border-strong); color: var(--text-primary); }
 
-.retryBtn:hover { border-color: #6b7280; color: #f9fafb; }
-
-/* ── Skeleton loading ─────────────────────────────────────────────── */
-@keyframes shimmer {
-  0%   { background-position: -800px 0; }
-  100% { background-position:  800px 0; }
-}
-
+/* ── Skeleton ───────────────────────────────────────────────────────────── */
 .skeleton {
-  border-radius: 10px;
-  background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
-  background-size: 800px 100%;
-  animation: shimmer 1.4s infinite linear;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 0px,
+    var(--bg-elevated) 120px,
+    var(--bg-surface) 240px
+  );
+  background-size: 600px 100%;
+  animation: shimmer 1.5s infinite linear;
 }
 
 .skeletonGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.25rem;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
 }
 
-/* ── Error / empty states ─────────────────────────────────────────── */
+/* ── Error state ────────────────────────────────────────────────────────── */
 .errorBox {
-  background: #1c1b1b;
-  border: 1px solid #ef4444;
-  border-radius: 10px;
-  padding: 2rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-md);
+  padding: var(--sp-8);
   text-align: center;
-  margin-top: 1.5rem;
+  margin-top: var(--sp-6);
 }
 
 .errorTitle {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #ef4444;
-  margin: 0 0 0.4rem;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--red);
+  margin: 0 0 var(--sp-1) 6px;
 }
 
 .errorMsg {
-  font-size: 0.85rem;
-  color: #9ca3af;
+  font-size: var(--fs-callout);
+  color: var(--text-muted);
   margin: 0;
 }
 
-/* ── Metric cards grid ───────────────────────────────────────────── */
+/* ── Metric cards ───────────────────────────────────────────────────────── */
 .metricsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
 }
 
 .metricCard {
-  background: var(--bg-surface, #1f2937);
-  border: 1px solid var(--bg-border, #374151);
-  border-radius: 10px;
-  padding: 1.1rem 1.25rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-5);
+  transition: var(--transition);
 }
+.metricCard:hover { border-color: var(--border-strong); }
 
 .metricLabel {
-  font-size: 0.75rem;
-  color: var(--text-muted, #6b7280);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0 0 0.35rem;
+  letter-spacing: 0.06em;
+  margin: 0 0 var(--sp-2);
 }
 
 .metricValue {
-  font-size: 1.7rem;
-  font-weight: 700;
+  font-size: 1.875rem;
+  font-weight: var(--fw-bold);
+  letter-spacing: -1px;
   margin: 0;
-  color: var(--text-primary, #f9fafb);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
 }
 
-.metricDanger .metricValue { color: #ef4444; }
+.metricDanger .metricValue { color: var(--red); }
 
-/* ── Chart cards ──────────────────────────────────────────────────── */
+/* ── Chart cards ────────────────────────────────────────────────────────── */
 .chartCard {
-  background: var(--bg-surface, #1f2937);
-  border: 1px solid var(--bg-border, #374151);
-  border-radius: 10px;
-  padding: 1.25rem;
-  margin-bottom: 1.25rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-4);
 }
 
 .chartTitle {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0 0 0.2rem;
-  color: var(--text-primary, #f9fafb);
+  font-size: var(--fs-callout);
+  font-weight: var(--fw-semibold);
+  margin: 0 0 3px;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
 }
 
 .chartSub {
-  font-size: 0.78rem;
-  color: var(--text-muted, #6b7280);
-  margin: 0 0 1rem;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin: 0 0 var(--sp-4);
+  line-height: 1.5;
 }
 
-/* ── Two-column layout ───────────────────────────────────────────── */
+/* ── Two-column layout ──────────────────────────────────────────────────── */
 .twoCol {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
 }
+@media (max-width: 720px) { .twoCol { grid-template-columns: 1fr; } }
 
-@media (max-width: 720px) {
-  .twoCol { grid-template-columns: 1fr; }
-}
-
-/* ── Anomaly panel ───────────────────────────────────────────────── */
+/* ── Anomaly panel ──────────────────────────────────────────────────────── */
 .noAnomaly {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: #052e16;
-  border: 1px solid #166534;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  color: #4ade80;
+  gap: var(--sp-2);
+  padding: 10px var(--sp-4);
+  background: var(--fill-green);
+  border: 1px solid rgba(48,209,88,0.2);
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-callout);
+  font-weight: var(--fw-medium);
+  color: var(--green);
 }
 
 .anomalyAlert {
-  padding: 0.65rem 1rem;
-  background: #292015;
-  border: 1px solid #92400e;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: #fbbf24;
-  margin-bottom: 0.5rem;
+  padding: 10px var(--sp-4);
+  background: var(--fill-amber);
+  border: 1px solid rgba(255,159,10,0.2);
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-callout);
+  color: var(--amber);
+  margin-bottom: var(--sp-2);
 }
 
 .suspiciousUser {
-  padding: 0.5rem 1rem;
-  background: #1f2937;
-  border: 1px solid #374151;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  color: #9ca3af;
-  margin-bottom: 0.35rem;
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-footnote);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
 }
 
-/* ── Latency table ───────────────────────────────────────────────── */
+/* ── Latency table ──────────────────────────────────────────────────────── */
 .latencyTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--fs-footnote);
 }
 
 .latencyTable th {
   text-align: left;
-  padding: 0.5rem 0.75rem;
-  color: var(--text-muted, #6b7280);
-  font-weight: 500;
-  border-bottom: 1px solid var(--bg-border, #374151);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
 }
 
 .latencyTable td {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #1f2937;
-  color: var(--text-primary, #f9fafb);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
 }
 
 .latencyTable tr:last-child td { border-bottom: none; }
-
-.highLatency td { color: #fbbf24; }
+.highLatency td { color: var(--amber); }

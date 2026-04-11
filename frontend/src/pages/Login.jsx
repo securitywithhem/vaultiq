@@ -24,7 +24,8 @@ const Login = () => {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
-      toast.error('Invalid email or password');
+      const errorMessage = err.message || err.response?.data?.error || 'Invalid email or password';
+      toast.error(errorMessage);
       setIsSubmitting(false);
     }
   };

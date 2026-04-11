@@ -18,7 +18,7 @@ const Register = () => {
 
   // Validate on the fly
   useEffect(() => {
-    const { password } = formData;
+    const password = formData.password;
     let score = 0;
     if (password.length >= 8) score += 1;
     if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
@@ -63,7 +63,8 @@ const Register = () => {
       await register(formData.email, formData.password, formData.fullName);
       navigate('/dashboard');
     } catch (err) {
-      setErrors({ api: err.response?.data?.error || 'Registration failed' });
+      const errorMessage = err.message || err.response?.data?.error || 'Registration failed';
+      setErrors({ api: errorMessage });
       setIsSubmitting(false);
     }
   };

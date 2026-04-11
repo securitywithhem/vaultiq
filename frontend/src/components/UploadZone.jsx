@@ -7,129 +7,140 @@ import { formatFileSize } from '../utils/format';
 import styles from './UploadZone.module.css';
 
 const UploadZone = ({ onUploadSuccess }) => {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [isComplete, setIsComplete] = useState(false);
+  const [progress, setProgress] = useState({}); // { filename: percent }
+  const [done, setDone] = useState(false);
 
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles?.length > 0) {
-      setFile(acceptedFiles[0]);
-      setIsComplete(false);
-      setProgress(0);
+      setFiles(acceptedFiles);
+      setDone(false);
+      setProgress({});
     }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    multiple: false
+    multiple: true,
   });
 
   const handleUpload = async (e) => {
     e.stopPropagation();
-    if (!file) return;
+    if (!files.length) return;
 
     setIsUploading(true);
-    try {
-      const uploadedFile = await fileService.uploadFile(file, (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        setProgress(percentCompleted);
-      });
-      
-      setIsComplete(true);
-      toast.success('File encrypted and uploaded safely');
-      
-      if (onUploadSuccess) {
-        onUploadSuccess(uploadedFile);
+    let anySuccess = false;
+
+    for (const file of files) {
+      try {
+        const uploaded = await fileService.uploadFile(file, (ev) => {
+          const pct = Math.round((ev.loaded * 100) / ev.total);
+          setProgress(prev => ({ ...prev, [file.name]: pct }));
+        });
+        if (onUploadSuccess) onUploadSuccess(uploaded);
+        anySuccess = true;
+      } catch (err) {
+        const msg = err.response?.data?.error || `Upload failed: ${file.name}`;
+        toast.error(msg);
       }
-      
-      // Reset after 3 seconds
+    }
+
+    setIsUploading(false);
+    if (anySuccess) {
+      setDone(true);
+      toast.success(`${files.length === 1 ? 'File' : `${files.length} files`} encrypted and uploaded`);
       setTimeout(() => {
-        setFile(null);
-        setIsComplete(false);
-        setProgress(0);
+        setFiles([]);
+        setDone(false);
+        setProgress({});
       }, 3000);
-      
-    } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Upload failed';
-      toast.error(errorMsg);
-    } finally {
-      setIsUploading(false);
     }
   };
 
-
   const cancelSelection = (e) => {
     e.stopPropagation();
-    setFile(null);
+    setFiles([]);
   };
 
+  const overallProgress = files.length
+    ? Math.round(Object.values(progress).reduce((a, b) => a + b, 0) / files.length)
+    : 0;
+
   return (
-    <div 
-      {...getRootProps()} 
-      className={`${styles.container} ${isDragActive ? styles.dragActive : ''} ${isComplete ? styles.complete : ''}`}
+    <div
+      {...getRootProps()}
+      className={`${styles.container} ${isDragActive ? styles.dragActive : ''} ${done ? styles.complete : ''}`}
     >
       <input {...getInputProps()} />
-      
-      {!file ? (
+
+      {!files.length ? (
         <div className={styles.emptyState}>
           <div className={`${styles.iconWrapper} ${isDragActive ? styles.iconPulse : ''}`}>
             <svg className={styles.uploadIcon} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </div>
           <p className={styles.title}>
             {isDragActive ? 'Release to encrypt and upload' : 'Drop files here or click to browse'}
           </p>
-          <p className={styles.subtitle}>All files will be encrypted with AES-256 before leaving your device.</p>
+          <p className={styles.subtitle}>
+            All files will be encrypted with AES-256. You can select multiple files at once.
+          </p>
         </div>
       ) : (
         <div className={styles.fileState}>
-          <div className={styles.fileInfo}>
-            <div className={styles.fileIcon}>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div className={styles.fileDetails}>
-              <p className={styles.fileName}>{file.name}</p>
-              <p className={styles.fileSize}>{formatFileSize(file.size)}</p>
-            </div>
-          </div>
-          
+          <ul className={styles.fileList}>
+            {files.map((f) => (
+              <li key={f.name} className={styles.fileRow}>
+                <div className={styles.fileIcon}>
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className={styles.fileDetails}>
+                  <p className={styles.fileName}>{f.name}</p>
+                  <p className={styles.fileSize}>{formatFileSize(f.size)}</p>
+                </div>
+                {isUploading && progress[f.name] !== undefined && (
+                  <span className={styles.filePct}>{progress[f.name]}%</span>
+                )}
+                {done && (
+                  <svg className={styles.checkIcon} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </li>
+            ))}
+          </ul>
+
           {isUploading && (
             <div className={styles.progressContainer}>
               <div className={styles.progressBar}>
-                <div className={styles.progressFill} style={{ width: `${progress}%` }}></div>
+                <div className={styles.progressFill} style={{ width: `${overallProgress}%` }} />
               </div>
-              <span className={styles.progressText}>{progress}% Encrypting...</span>
+              <span className={styles.progressText}>{overallProgress}% Encrypting…</span>
             </div>
           )}
 
-          {isComplete && (
+          {done && (
             <div className={styles.successState}>
               <svg className={styles.successIcon} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <span>Encrypted & Uploaded</span>
+              <span>Encrypted &amp; Uploaded</span>
             </div>
           )}
 
-          {!isUploading && !isComplete && (
+          {!isUploading && !done && (
             <div className={styles.actions}>
-              <button 
-                className={styles.cancelBtn} 
-                onClick={cancelSelection}
-                type="button"
-              >
+              <button className={styles.cancelBtn} onClick={cancelSelection} type="button">
                 Cancel
               </button>
-              <button 
-                className={styles.uploadBtn} 
-                onClick={handleUpload}
-                type="button"
-              >
-                Secure Upload
+              <button className={styles.uploadBtn} onClick={handleUpload} type="button">
+                Secure Upload ({files.length} {files.length === 1 ? 'file' : 'files'})
               </button>
             </div>
           )}
@@ -140,7 +151,7 @@ const UploadZone = ({ onUploadSuccess }) => {
 };
 
 UploadZone.propTypes = {
-  onUploadSuccess: PropTypes.func
+  onUploadSuccess: PropTypes.func,
 };
 
 export default UploadZone;

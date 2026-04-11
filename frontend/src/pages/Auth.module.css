@@ -1,118 +1,178 @@
+/* ── Shell ──────────────────────────────────────────────────────────────── */
 .container {
   display: flex;
   min-height: 100vh;
   width: 100%;
+  background: var(--bg-primary);
 }
 
+/* ── Left brand panel ───────────────────────────────────────────────────── */
 .leftPanel {
   flex: 1;
-  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-surface) 100%);
   display: none;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid var(--bg-border);
+  border-right: 1px solid var(--border);
   position: relative;
   overflow: hidden;
+  background: var(--bg-primary);
 }
 
 @media (min-width: 1024px) {
   .leftPanel { display: flex; }
 }
 
+/* Subtle radial ambient */
 .leftPanel::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+  inset: 0;
+  background:
+    radial-gradient(ellipse 55% 45% at 35% 35%, rgba(10,132,255,0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 40% at 72% 68%, rgba(94,92,230,0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* Dot-grid pattern */
+.leftPanel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
 }
 
 .brandDisplay {
   text-align: center;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .lockAnimation {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 32px auto;
-  color: var(--accent-blue);
-  background-color: rgba(59, 130, 246, 0.1);
-  padding: 16px;
-  border-radius: 24px;
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  animation: pulseGlow 3s infinite;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto var(--sp-8);
+  color: var(--blue);
+  background: var(--fill-blue);
+  padding: var(--sp-4);
+  border-radius: 20px;
+  border: 1px solid rgba(10,132,255,0.20);
 }
 
+.lockAnimation svg { width: 100%; height: 100%; }
+
 .brandDisplay h1 {
-  font-size: 3rem;
-  letter-spacing: -1px;
-  margin-bottom: 16px;
-  color: #fff;
+  font-size: 2.5rem;
+  font-weight: var(--fw-bold);
+  letter-spacing: -1.2px;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
 }
 
 .brandDisplay p {
-  font-size: 1.25rem;
+  font-size: var(--fs-callout);
+  color: var(--text-muted);
+  letter-spacing: -0.1px;
+}
+
+/* ── Feature list ───────────────────────────────────────────────────────── */
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-10);
+  text-align: left;
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-callout);
   color: var(--text-secondary);
 }
 
+.featureIcon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Right form panel ───────────────────────────────────────────────────── */
 .rightPanel {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background-color: var(--bg-surface);
+  padding: var(--sp-6);
+  background: var(--bg-primary);
 }
 
 .formContainer {
   width: 100%;
-  max-width: 400px;
+  max-width: 360px;
 }
 
+/* ── Form heading ───────────────────────────────────────────────────────── */
 .formContainer h2 {
-  font-size: 2rem;
-  margin-bottom: 8px;
-  color: #fff;
+  font-size: 1.875rem;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.8px;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-1);
 }
 
 .subtitle {
-  color: var(--text-secondary);
-  margin-bottom: 32px;
+  font-size: var(--fs-callout);
+  color: var(--text-muted);
+  margin-bottom: var(--sp-8);
+  line-height: 1.5;
 }
 
+/* ── Form ───────────────────────────────────────────────────────────────── */
 .form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--sp-4);
 }
 
 .inputGroup {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .inputGroup label {
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
   color: var(--text-secondary);
+  letter-spacing: -0.05px;
 }
 
 .inputGroup input {
   width: 100%;
-  background-color: var(--bg-primary);
-  border: 1px solid var(--bg-border);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 12px 16px;
+  padding: 11px var(--sp-4);
   color: var(--text-primary);
-  font-size: 1rem;
-  transition: var(--transition);
+  font-size: var(--fs-callout);
+  font-family: var(--font-sans);
+  transition: border-color var(--duration-fast) var(--ease),
+              box-shadow   var(--duration-fast) var(--ease);
 }
 
 .inputGroup input:focus {
   outline: none;
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: var(--blue);
+  box-shadow: var(--shadow-glow-blue);
 }
 
 .passwordInput {
@@ -121,69 +181,88 @@
   align-items: center;
 }
 
+.passwordInput input { padding-right: 54px; }
+
 .togglePwd {
   position: absolute;
   right: 12px;
   color: var(--text-muted);
-  font-size: 0.875rem;
-  font-weight: 500;
-  padding: 4px;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  padding: 3px 6px;
+  border-radius: 4px;
+  transition: color var(--duration-fast) var(--ease);
 }
-
 .togglePwd:hover { color: var(--text-primary); }
 
-.errorText {
-  color: var(--accent-red);
-  font-size: 0.75rem;
-  margin-top: 4px;
-}
-
+/* ── Submit button ──────────────────────────────────────────────────────── */
 .submitBtn {
-  margin-top: 12px;
   width: 100%;
-  background-color: var(--accent-blue);
+  background: var(--blue);
   color: #fff;
   padding: 12px;
   border-radius: var(--radius-sm);
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: var(--fs-callout);
+  font-weight: var(--fw-semibold);
+  font-family: var(--font-sans);
+  letter-spacing: -0.2px;
+  margin-top: var(--sp-2);
+  transition: background var(--duration-base) var(--ease),
+              box-shadow  var(--duration-base) var(--ease);
 }
-
 .submitBtn:hover:not(:disabled) {
-  background-color: var(--accent-blue-hover);
+  background: var(--blue-dk);
+  box-shadow: 0 4px 16px rgba(10,132,255,0.35);
+}
+.submitBtn:active:not(:disabled) {
+  background: var(--blue-dk);
+  box-shadow: none;
 }
 
 .btnInner {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
+/* ── Footer link ────────────────────────────────────────────────────────── */
 .footerLink {
-  margin-top: 32px;
+  margin-top: var(--sp-6);
   text-align: center;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
+  font-size: var(--fs-footnote);
+  color: var(--text-muted);
 }
 
-/* Password Strength Indicator */
+.footerLink a {
+  color: var(--blue);
+  font-weight: var(--fw-medium);
+}
+.footerLink a:hover { color: var(--blue-dk); }
+
+/* ── Password strength meter ────────────────────────────────────────────── */
 .strengthMeter {
   display: flex;
-  gap: 4px;
-  margin-top: 8px;
-  height: 4px;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  height: 2px;
 }
 
 .strengthSegment {
   flex: 1;
-  background-color: var(--bg-elevated);
+  background: var(--bg-elevated);
   border-radius: 2px;
-  transition: var(--transition);
+  transition: background var(--duration-base) var(--ease);
 }
 
 .strengthText {
-  font-size: 0.75rem;
-  margin-top: 6px;
-  text-align: left;
+  font-size: var(--fs-caption);
+  margin-top: var(--sp-1);
+  color: var(--text-muted);
+}
+
+.errorText {
+  font-size: var(--fs-caption);
+  color: var(--red);
+  margin-top: 4px;
 }
