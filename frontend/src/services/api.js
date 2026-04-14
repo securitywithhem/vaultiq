@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: BASE,
@@ -23,29 +23,6 @@ function flushQueue(success) {
 
 api.interceptors.response.use(
   (response) => response,
-<<<<<<< HEAD
-  (error) => {
-    // Handle 401 - clear auth and redirect to login
-    // Handle 401 - Unauthorized
-    if (error.response && error.response.status === 401) {
-      // Do not hard-redirect here as it causes infinite loops when checking auth on the login page.
-      // The AuthContext and ProtectedRoute components handle redirection gracefully.
-      console.warn('[API] Unauthorized (401). Handling via application logic.');
-    }
-
-    // Network error handling
-    if (!error.response) {
-      if (error.code === 'ECONNABORTED') {
-        error.message = 'Request timeout. Please try again.';
-      } else if (error.message === 'Network Error' || !navigator.onLine) {
-        error.message = `Cannot connect to ${process.env.REACT_APP_API_URL}. Is the backend running?`;
-      }
-    }
-
-    // Server error
-    if (error.response?.status >= 500) {
-      error.message = error.response?.data?.error || 'Server error. Please try again.';
-=======
   async (error) => {
     const PUBLIC   = ['/login', '/signup'];
     const onPublic = PUBLIC.some((p) => window.location.pathname.startsWith(p));
@@ -89,10 +66,15 @@ api.interceptors.response.use(
       });
     }
 
-    // Non-401, or already retried — surface the error
-    if (!error.response && error.message === 'Network Error') {
-      error.message = 'Connection failed. Is the backend running?';
->>>>>>> main
+    // Network & Server error handling
+    if (!error.response) {
+      if (error.code === 'ECONNABORTED') {
+        error.message = 'Request timeout. Please try again.';
+      } else if (error.message === 'Network Error' || !navigator.onLine) {
+        error.message = `Cannot connect to ${process.env.REACT_APP_API_URL || 'backend'}. Is the backend running?`;
+      }
+    } else if (error.response.status >= 500) {
+      error.message = error.response.data?.error || 'Server error. Please try again.';
     }
 
     return Promise.reject(error);

@@ -1,17 +1,13 @@
-<<<<<<< HEAD
 /* ─────────────────────────────────────────────────────────────────────────────
    VaultIQ Design System  ·  Apple × Vercel dark palette
    Font loaded non-blocking in index.html — no @import here (was render-blocking)
    All values defined once — never hardcode hex in components.
 ───────────────────────────────────────────────────────────────────────────── */
-=======
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
->>>>>>> main
 :root {
   /* ── Backgrounds ── Vercel-grade black base, Apple-grade surfaces */
   --bg-primary:   #000000;          /* Pure black — Vercel */
@@ -165,53 +161,36 @@ body {
   min-height: 100vh;
 }
 
-<<<<<<< HEAD
 /* ── Typography ─────────────────────────────────────────────────────────── */
-h1, h2, h3, h4, h5, h6 {
-  font-weight: var(--fw-semibold);
-=======
 /* `:where()` keeps specificity at 0 so any Tailwind utility class can override */
 :where(h1, h2, h3, h4, h5, h6) {
-  font-weight: 600;
->>>>>>> main
+  font-weight: var(--fw-semibold);
   line-height: 1.2;
   letter-spacing: -0.3px;
   color: var(--text-primary);
 }
 
-<<<<<<< HEAD
-h1 { font-size: var(--fs-display);  font-weight: var(--fw-bold);     letter-spacing: -0.8px; }
-h2 { font-size: var(--fs-title1);   font-weight: var(--fw-bold);     letter-spacing: -0.5px; }
-h3 { font-size: var(--fs-title2);   font-weight: var(--fw-semibold); letter-spacing: -0.3px; }
-h4 { font-size: var(--fs-title3);   font-weight: var(--fw-semibold); }
-h5 { font-size: var(--fs-headline); font-weight: var(--fw-semibold); }
-h6 { font-size: var(--fs-body);     font-weight: var(--fw-semibold); }
+:where(h1) { font-size: var(--fs-display);  font-weight: var(--fw-bold);     letter-spacing: -0.8px; }
+:where(h2) { font-size: var(--fs-title1);   font-weight: var(--fw-bold);     letter-spacing: -0.5px; }
+:where(h3) { font-size: var(--fs-title2);   font-weight: var(--fw-semibold); letter-spacing: -0.3px; }
+:where(h4) { font-size: var(--fs-title3);   font-weight: var(--fw-semibold); }
+:where(h5) { font-size: var(--fs-headline); font-weight: var(--fw-semibold); }
+:where(h6) { font-size: var(--fs-body);     font-weight: var(--fw-semibold); }
 
-p { line-height: 1.6; }
+:where(p) { line-height: 1.6; }
 
-a {
-  color: var(--text-link);
-  text-decoration: none;
-  transition: color var(--duration-base) var(--ease);
-=======
 :where(a) {
-  color: var(--accent-blue);
+  color: var(--text-link);
   text-decoration: none;
   transition: var(--transition);
 }
 
 :where(a:hover) {
-  color: var(--accent-blue-hover);
->>>>>>> main
+  color: var(--blue-dk);
 }
-a:hover { color: var(--blue-dk); }
 
-<<<<<<< HEAD
 /* ── Elements ───────────────────────────────────────────────────────────── */
-button {
-=======
 :where(button) {
->>>>>>> main
   font-family: var(--font-sans);
   font-size: var(--fs-callout);
   font-weight: var(--fw-medium);
@@ -222,21 +201,12 @@ button {
   letter-spacing: -0.1px;
 }
 
-<<<<<<< HEAD
-button:disabled {
+:where(button:disabled) {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-input, textarea, select {
-=======
-:where(button:disabled) {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-:where(input) {
->>>>>>> main
+:where(input, textarea, select) {
   font-family: var(--font-sans);
   font-size: var(--fs-body);
   color: var(--text-primary);

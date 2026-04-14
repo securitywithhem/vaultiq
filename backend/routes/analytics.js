@@ -266,6 +266,86 @@ function emptyPayload() {
   };
 }
 
+// ─── Normalize raw analytics into the shape Analytics.jsx expects ─────────────
+// Both the Spark job and the Supabase live path emit the same internal shape:
+//   daily_activity.{dates,uploads,downloads,detections,total_bytes_per_day}
+//   latency_analysis.busiest_hours[{hour,event_count}]
+//   anomaly_detection.suspicious_users[{user_id,hour,event_count}]
+//   user_behaviour.daily_active_users[{date,active_users}]
+//
+// The frontend expects:
+//   _source, platform_totals, daily_trend, top_files, event_breakdown,
+//   hourly_pattern, anomalies
+
+function normalizeForFrontend(raw, source) {
+  const da        = raw.daily_activity || {};
+  const dates     = da.dates              || [];
+  const uploads   = da.uploads            || [];
+  const downloads = da.downloads          || [];
+  const dets      = da.detections         || [];
+  const bytesDay  = da.total_bytes_per_day|| [];
+
+  const sumArr = (arr) => arr.reduce((s, v) => s + (v || 0), 0);
+
+  const totalUploads    = sumArr(uploads);
+  const totalDownloads  = sumArr(downloads);
+  const totalDetections = sumArr(dets);
+  const totalBytes      = sumArr(bytesDay);
+
+  // Active users — take the highest single-day distinct count as a proxy
+  const dau = (raw.user_behaviour?.daily_active_users || []);
+  const activeUsers = dau.length > 0 ? Math.max(...dau.map(d => d.active_users || 0)) : 0;
+
+  // daily_trend: [{date, uploads, downloads, detections}]
+  const daily_trend = dates.map((date, i) => ({
+    date,
+    uploads:    uploads[i]   || 0,
+    downloads:  downloads[i] || 0,
+    detections: dets[i]      || 0,
+  }));
+
+  // event_breakdown: [{event, count}] — used for the donut pie chart
+  const event_breakdown = [
+    { event: 'Uploads',    count: totalUploads    },
+    { event: 'Downloads',  count: totalDownloads  },
+    { event: 'AI Scans',   count: totalDetections },
+  ].filter(e => e.count > 0);
+
+  // hourly_pattern: [{hour, events}] — used for the 24-bar chart
+  const busiest = raw.latency_analysis?.busiest_hours || [];
+  const hourly_pattern = busiest.length > 0
+    ? busiest.map(h => ({ hour: h.hour, events: h.event_count || 0 }))
+    : Array.from({ length: 24 }, (_, h) => ({ hour: h, events: 0 }));
+
+  // top_files: not tracked per-file in current backend; return empty array
+  const top_files = [];
+
+  // anomalies: suspicious users mapped to the shape the frontend renders
+  const suspicious = raw.anomaly_detection?.suspicious_users || [];
+  const anomalies = suspicious.map(u => ({
+    user_id:          u.user_id,
+    off_hours_events: u.event_count || 0,
+    date:             String(u.hour || u.hour_bucket || ''),
+  }));
+
+  const sourceLabel = { hdfs: 'hdfs', local_cache: 'cache', supabase_live: 'live', empty: 'empty' };
+
+  return {
+    _source:         sourceLabel[source] || source,
+    generated_at:    raw.generated_at,
+    platform_totals: {
+      total_events:         totalUploads + totalDownloads + totalDetections,
+      active_users:         activeUsers,
+      total_bytes_uploaded: totalBytes || raw._summary?.today_bytes || 0,
+    },
+    daily_trend,
+    top_files,
+    event_breakdown,
+    hourly_pattern,
+    anomalies,
+  };
+}
+
 // ─── GET / ────────────────────────────────────────────────────────────────────
 
 router.get('/', authenticateToken, async (req, res) => {
@@ -275,7 +355,7 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const data = await readFromHDFS();
     logger.info('[analytics] Served from HDFS', { requestId: req.id });
-    return res.status(200).json({ source: 'hdfs', ...data });
+    return res.status(200).json(normalizeForFrontend(data, 'hdfs'));
   } catch (err) {
     logger.warn('[analytics] HDFS unavailable, trying local cache', { error: err.message });
   }
@@ -284,7 +364,7 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const data = readFromLocal();
     logger.info('[analytics] Served from local cache', { requestId: req.id });
-    return res.status(200).json({ source: 'local_cache', ...data });
+    return res.status(200).json(normalizeForFrontend(data, 'local_cache'));
   } catch (err) {
     logger.warn('[analytics] Local cache unavailable, deriving from Supabase', { error: err.message });
   }
@@ -293,13 +373,13 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const data = await readFromSupabase();
     logger.info('[analytics] Served from Supabase live', { requestId: req.id });
-    return res.status(200).json({ source: 'supabase_live', ...data });
+    return res.status(200).json(normalizeForFrontend(data, 'supabase_live'));
   } catch (err) {
     logger.error('[analytics] All tiers failed, returning empty payload', { error: err.message });
   }
 
   // Tier 4 — graceful empty (never 503)
-  return res.status(200).json({ source: 'empty', ...emptyPayload() });
+  return res.status(200).json(normalizeForFrontend(emptyPayload(), 'empty'));
 });
 
 // ─── POST /trigger ────────────────────────────────────────────────────────────
