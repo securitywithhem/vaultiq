@@ -2,22 +2,60 @@ import api from './api';
 
 export const authService = {
   register: async (email, password, fullName) => {
-    const response = await api.post('/api/auth/register', { email, password, fullName });
-    return response.data.data; // { user, token }
+    try {
+      const response = await api.post('/api/auth/register', { email, password, fullName });
+      const data = response.data?.data || response.data;
+      if (!data || !data.user) {
+        throw new Error('Invalid response from server');
+      }
+      return data; // { user, token }
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || error.message || 'Registration failed';
+      const err = new Error(errorMsg);
+      err.response = error.response;
+      throw err;
+    }
   },
 
   login: async (email, password) => {
-    const response = await api.post('/api/auth/login', { email, password });
-    return response.data.data; // { user, token }
+    try {
+      const response = await api.post('/api/auth/login', { email, password });
+      const data = response.data?.data || response.data;
+      if (!data || !data.user) {
+        throw new Error('Invalid response from server');
+      }
+      return data; // { user, token }
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || error.message || 'Login failed';
+      const err = new Error(errorMsg);
+      err.response = error.response;
+      throw err;
+    }
   },
 
   getMe: async () => {
-    const response = await api.get('/api/auth/me');
-    return response.data.data; // { user }
+    try {
+      const response = await api.get('/api/auth/me');
+      const data = response.data?.data || response.data;
+      if (!data || !data.user) {
+        throw new Error('Invalid response from server');
+      }
+      return data; // { user }
+    } catch (error) {
+      const err = new Error(error.response?.data?.error || error.message || 'Failed to get user');
+      err.response = error.response;
+      throw err;
+    }
   },
 
   logout: async () => {
-    const response = await api.post('/api/auth/logout');
-    return response.data.data;
+    try {
+      const response = await api.post('/api/auth/logout');
+      const data = response.data?.data || response.data;
+      return data;
+    } catch (error) {
+      // Logout errors are non-critical
+      console.error('Logout error:', error.message);
+    }
   }
 };

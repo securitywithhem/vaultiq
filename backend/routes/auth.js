@@ -39,10 +39,11 @@ router.post('/register', validate(registerSchema), async (req, res) => {
 
     if (authError) {
       if (authError.message.includes('already registered')) {
-        return res.status(409).json({ error: 'Email already exists' });
+        logger.warn('Registration failed - email exists', { requestId: req.id, email });
+        return res.status(409).json({ data: null, error: 'Email already exists' });
       }
       logger.warn('Registration failed', { requestId: req.id, email, error: authError.message });
-      return res.status(400).json({ error: 'Registration failed' });
+      return res.status(400).json({ data: null, error: authError.message || 'Registration failed' });
     }
 
     const user = {
@@ -70,7 +71,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     return res.status(201).json({ data: { user } });
   } catch (err) {
     logger.error('Register error', { requestId: req.id, error: err.message });
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ data: null, error: 'Internal server error' });
   }
 });
 
@@ -92,7 +93,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
       const locked = await isAccountLocked(userLookup.id);
       if (locked) {
         logger.warn('Login blocked — account locked', { requestId: req.id, email });
-        return res.status(423).json({ error: 'Account temporarily locked due to too many failed attempts. Try again later.' });
+        return res.status(423).json({ data: null, error: 'Account temporarily locked due to too many failed attempts. Try again later.' });
       }
     }
 
@@ -113,7 +114,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
         ipAddress: req.ip,
         durationMs: Date.now() - start,
       }).catch(() => {});
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ data: null, error: 'Invalid credentials' });
     }
 
     // Clear failed login attempts on success

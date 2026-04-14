@@ -1,52 +1,42 @@
 .container {
   display: inline-flex;
   align-items: center;
-  background-color: var(--bg-surface);
-  border: 1px solid var(--bg-border);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 4px var(--sp-2);
   cursor: pointer;
   transition: var(--transition);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--fs-caption);
+  gap: var(--sp-1) 6px;
 }
 
 .container:hover {
-  border-color: var(--text-muted);
-  background-color: var(--bg-elevated);
+  border-color: var(--border-strong);
+  background: var(--bg-active);
 }
 
 .typewriterWrapper {
   overflow: hidden;
   white-space: nowrap;
-  animation: typewriter 1.5s steps(20, end);
 }
 
 .hashText {
-  color: var(--accent-blue);
-  letter-spacing: 0.5px;
+  color: var(--blue);
+  letter-spacing: 0.3px;
 }
 
 .copyBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 8px;
   color: var(--text-muted);
-  padding: 2px;
+  padding: 1px;
+  flex-shrink: 0;
 }
 
-.icon {
-  width: 14px;
-  height: 14px;
-}
+.icon { width: 13px; height: 13px; }
+.iconSuccess { width: 13px; height: 13px; color: var(--green); }
 
-.iconSuccess {
-  width: 14px;
-  height: 14px;
-  color: var(--accent-green);
-}
-
-.container:hover .icon {
-  color: var(--text-primary);
-}
+.container:hover .icon { color: var(--text-secondary); }

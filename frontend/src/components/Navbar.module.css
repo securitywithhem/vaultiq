@@ -1,138 +1,253 @@
+/* ── Shell ──────────────────────────────────────────────────────────────── */
 .navbar {
-  background-color: rgba(10, 15, 30, 0.8);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--bg-border);
+  background: rgba(0,0,0,0.95);
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 100;
   width: 100%;
 }
 
 .container {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 0 24px;
-  height: 64px;
+  padding: 0 var(--sp-6);
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--sp-4);
 }
 
+/* ── Logo ───────────────────────────────────────────────────────────────── */
 .logoContainer {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-2);
+  flex-shrink: 0;
 }
 
 .logoIcon {
-  width: 28px;
-  height: 28px;
-  color: var(--accent-blue);
+  width: 22px;
+  height: 22px;
+  color: var(--blue);
 }
 
 .logoText {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.4px;
 }
 
+/* ── Desktop nav links ──────────────────────────────────────────────────── */
 .desktopLinks {
   display: none;
   align-items: center;
-  gap: 32px;
+  gap: 2px;
 }
 
 .link {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  font-weight: 500;
-  padding: 8px 0;
-  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-footnote);
+  font-weight: var(--fw-medium);
+  padding: 5px 10px;
+  border-radius: var(--radius-xs);
+  transition: var(--transition);
+  letter-spacing: -0.1px;
 }
 
 .link:hover {
   color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .activeLink {
   color: var(--text-primary);
-  border-bottom-color: var(--accent-blue);
+  background: var(--bg-elevated);
 }
 
-.desktopUser {
-  display: none;
+/* ── Desktop user / profile ─────────────────────────────────────────────── */
+.desktopUser { display: none; align-items: center; }
+
+.profileWrapper { position: relative; }
+
+.avatarBtn {
+  display: flex;
   align-items: center;
-  gap: 24px;
-}
-
-.userEmail {
-  color: var(--text-muted);
-  font-size: 0.875rem;
-}
-
-.logoutBtn {
-  color: var(--text-secondary);
-  font-weight: 500;
-  font-size: 0.875rem;
-  padding: 6px 16px;
-  background-color: var(--bg-surface);
-  border: 1px solid var(--bg-border);
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
   border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: var(--transition);
 }
 
-.logoutBtn:hover {
-  background-color: var(--bg-elevated);
+.avatarBtn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(135deg, var(--blue) 0%, var(--indigo) 100%);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--text-muted);
+  transition: transform var(--duration-base) var(--ease);
+}
+.chevronOpen { transform: rotate(180deg); }
+
+/* ── Dropdown ───────────────────────────────────────────────────────────── */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
+  z-index: 200;
+  animation: dropIn var(--duration-fast) var(--ease-out);
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdownAvatar {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--blue) 0%, var(--indigo) 100%);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+}
+
+.dropdownMeta { min-width: 0; }
+
+.dropdownEmail {
+  font-size: var(--fs-footnote);
+  font-weight: var(--fw-medium);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 148px;
+  letter-spacing: -0.1px;
 }
 
+.dropdownRole {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.dropdownDivider {
+  height: 1px;
+  background: var(--border);
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px var(--sp-4);
+  font-size: var(--fs-footnote);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+  text-align: left;
+  transition: var(--transition);
+}
+
+.dropdownItem:hover {
+  background: var(--bg-hover);
+  color: var(--red);
+}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
 .mobileMenuBtn {
   display: flex;
+  align-items: center;
   color: var(--text-secondary);
   padding: 4px;
+  border-radius: var(--radius-xs);
 }
 
-.menuIcon {
-  width: 24px;
-  height: 24px;
-}
+.menuIcon { width: 20px; height: 20px; }
 
 .mobileMenu {
-  background-color: var(--bg-surface);
-  border-bottom: 1px solid var(--bg-border);
-  padding: 16px 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: var(--sp-3) var(--sp-6);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 2px;
 }
 
 .mobileLink {
   color: var(--text-secondary);
-  font-size: 1rem;
-  font-weight: 500;
-  padding: 8px 0;
+  font-size: var(--fs-callout);
+  font-weight: var(--fw-medium);
+  padding: var(--sp-2) 10px;
+  border-radius: var(--radius-xs);
+  transition: var(--transition);
+  letter-spacing: -0.1px;
 }
+.mobileLink:hover { color: var(--text-primary); background: var(--bg-elevated); }
 
 .mobileUserSection {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--bg-border);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sp-1);
 }
 
 .mobileUserEmail {
+  font-size: var(--fs-footnote);
   color: var(--text-muted);
-  font-size: 0.875rem;
+  padding: 0 10px;
 }
 
 .mobileLogoutBtn {
-  color: var(--accent-red);
+  color: var(--red);
   text-align: left;
-  font-weight: 500;
-  padding: 8px 0;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-callout);
+  padding: var(--sp-2) 10px;
+  border-radius: var(--radius-xs);
+  transition: var(--transition);
 }
+.mobileLogoutBtn:hover { background: var(--fill-red); }
 
 @media (min-width: 768px) {
   .desktopLinks, .desktopUser { display: flex; }

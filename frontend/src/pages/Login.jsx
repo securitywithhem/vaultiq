@@ -71,11 +71,17 @@ const Login = () => {
       await login(email, password);
       navigate('/dashboard', { replace: true });
     } catch (err) {
+<<<<<<< HEAD
+      const errorMessage = err.message || err.response?.data?.error || 'Invalid email or password';
+      toast.error(errorMessage);
+      setIsSubmitting(false);
+=======
       // Prefer the server's error message (e.g. "Invalid credentials",
       // "Account temporarily locked"), fall back to the axios/network message.
       const msg = err.response?.data?.error ?? err.message ?? 'Login failed';
       toast.error(msg);
       setIsLoading(false);
+>>>>>>> main
     }
   };
 

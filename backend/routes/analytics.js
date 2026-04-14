@@ -3,37 +3,43 @@
  * @description Analytics API — 3-tier reading strategy:
  *   1. HDFS  (analytics_latest.json via WebHDFS OPEN)
  *   2. Local bigdata/results/analytics_latest.json
- *   3. Supabase event_logs (basic live counts)
+ *   3. Supabase live — derives real analytics from files + event_logs tables
  *
  * GET  /api/analytics         — returns full analytics payload
  * POST /api/analytics/trigger — spawns bigdata/run_analytics.sh in background
  */
 
-const express    = require('express');
-const axios      = require('axios');
-const fs         = require('fs');
-const path       = require('path');
-const { spawn }  = require('child_process');
+const express   = require('express');
+const axios     = require('axios');
+const fs        = require('fs');
+const path      = require('path');
+const { spawn } = require('child_process');
 const { authenticateToken } = require('../middleware/auth');
-const logger     = require('../utils/logger');
+const { supabaseAdmin }     = require('../utils/supabase');
+const logger    = require('../utils/logger');
 
 const router = express.Router();
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
-const HDFS_BASE  = process.env.HDFS_WEBHDFS_URL || 'http://localhost:9870/webhdfs/v1';
+const HDFS_BASE  = process.env.HDFS_WEBHDFS_URL || '';
 const HDFS_USER  = process.env.HDFS_USER        || 'root';
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// Paths relative to this file: backend/routes/analytics.js
-// ../../bigdata/results  →  <project_root>/bigdata/results
-const LOCAL_RESULTS_FILE = path.resolve(__dirname, '../../bigdata/results/analytics_latest.json');
-const SCRIPT_PATH        = path.resolve(__dirname, '../../bigdata/run_analytics.sh');
+const LOCAL_RESULTS_FILE  = path.resolve(__dirname, '../../bigdata/results/analytics_latest.json');
+const SCRIPT_PATH         = path.resolve(__dirname, '../../bigdata/run_analytics.sh');
+const AI_DETECTIONS_FILE  = path.resolve(__dirname, '../../backend/data/ai_detections.json');
+
+function readLocalAIDetections() {
+  try {
+    const raw = fs.readFileSync(AI_DETECTIONS_FILE, 'utf8');
+    return JSON.parse(raw).detections || [];
+  } catch { return []; }
+}
 
 // ─── Tier 1 — HDFS ───────────────────────────────────────────────────────────
 
 async function readFromHDFS() {
+  if (!HDFS_BASE) throw new Error('HDFS not configured');
   const hdfsPath = '/vaultiq/results/analytics_latest.json';
   const user     = encodeURIComponent(HDFS_USER);
   const openUrl  = `${HDFS_BASE}${hdfsPath}?op=OPEN&user.name=${user}`;
@@ -54,58 +60,224 @@ function readFromLocal() {
   return JSON.parse(raw);
 }
 
-// ─── Tier 3 — Supabase live counts ───────────────────────────────────────────
+// ─── Tier 3 — Supabase live analytics ────────────────────────────────────────
+// Derives real analytics from the files table + event_logs table.
 
 async function readFromSupabase() {
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    throw new Error('Supabase env vars not configured');
+  const now   = new Date();
+  const today = now.toISOString().slice(0, 10);
+
+  // ── Pull files data ──────────────────────────────────────────────────────
+  const { data: allFilesRaw } = await supabaseAdmin
+    .from('files')
+    .select('id, filename, file_size, mime_type, uploaded_at, user_id')
+    .order('uploaded_at', { ascending: true });
+  const allFiles = allFilesRaw || [];
+
+  // ── Pull event_logs data (last 14 days) ──────────────────────────────────
+  const since14 = new Date(now);
+  since14.setDate(since14.getDate() - 14);
+
+  let events = [];
+  try {
+    const { data: eventsRaw } = await supabaseAdmin
+      .from('event_logs')
+      .select('event_type, file_size_bytes, file_type, ai_verdict, ai_score, duration_ms, timestamp, user_id')
+      .gte('timestamp', since14.toISOString())
+      .order('timestamp', { ascending: true });
+    events = eventsRaw || [];
+  } catch (_) {
+    // event_logs table may not exist — continue with files-only analytics
   }
 
-  const res = await axios.get(`${SUPABASE_URL}/rest/v1/event_logs`, {
-    params:  { select: 'event_type', limit: 50000 },
-    headers: {
-      apikey:        SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-    },
-    timeout: 15_000,
-  });
-
-  // Group-count in JS
-  const counts = {};
-  for (const row of res.data) {
-    const et = row.event_type || 'unknown';
-    counts[et] = (counts[et] || 0) + 1;
+  // ── Daily activity over last 14 days ─────────────────────────────────────
+  const dateRange = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    dateRange.push(d.toISOString().slice(0, 10));
   }
+
+  // Bucket events by date
+  const byDate = {};
+  for (const d of dateRange) {
+    byDate[d] = { uploads: 0, downloads: 0, detections: 0, bytes: 0 };
+  }
+
+  for (const ev of events) {
+    const d = ev.timestamp?.slice(0, 10);
+    if (!byDate[d]) continue;
+    if (ev.event_type === 'file_upload')   { byDate[d].uploads++;    byDate[d].bytes += ev.file_size_bytes || 0; }
+    if (ev.event_type === 'file_download') byDate[d].downloads++;
+    if (ev.event_type === 'ai_detection')  byDate[d].detections++;
+  }
+
+  // Also count uploads from the files table (fallback when event_logs is empty)
+  if (events.length === 0 && allFiles.length > 0) {
+    for (const f of allFiles) {
+      const d = f.uploaded_at?.slice(0, 10);
+      if (byDate[d]) { byDate[d].uploads++; byDate[d].bytes += f.file_size || 0; }
+    }
+  }
+
+  const dates      = dateRange;
+  const uploads    = dateRange.map(d => byDate[d].uploads);
+  const downloads  = dateRange.map(d => byDate[d].downloads);
+  const detections = dateRange.map(d => byDate[d].detections);
+  const bytesDay   = dateRange.map(d => byDate[d].bytes);
+
+  // ── Storage by file type ─────────────────────────────────────────────────
+  const typeMap = {};
+  for (const f of allFiles) {
+    const t = f.mime_type || 'unknown';
+    typeMap[t] = (typeMap[t] || 0) + (f.file_size || 0);
+  }
+  const file_type_distribution = Object.entries(typeMap)
+    .map(([file_type, total_bytes]) => ({ file_type, total_bytes }))
+    .sort((a, b) => b.total_bytes - a.total_bytes);
+
+  // ── AI verdict distribution — from event_logs + local store ────────────────
+  const verdictMap = {};
+  for (const ev of events) {
+    if (ev.event_type === 'ai_detection' && ev.ai_verdict) {
+      const label = ev.ai_verdict === 'ai_generated' ? 'AI-Generated'
+                  : ev.ai_verdict === 'mixed'         ? 'Mixed'
+                  :                                     'Human';
+      verdictMap[label] = (verdictMap[label] || 0) + 1;
+    }
+  }
+  // Supplement with locally-stored AI detection results
+  const localDetections = readLocalAIDetections();
+  for (const det of localDetections) {
+    if (!det.verdict) continue;
+    const label = det.verdict === 'ai_generated' ? 'AI-Generated'
+                : det.verdict === 'mixed'         ? 'Mixed'
+                :                                   'Human';
+    verdictMap[label] = (verdictMap[label] || 0) + 1;
+  }
+  // Also feed local detections into daily activity
+  for (const det of localDetections) {
+    const d = det.timestamp?.slice(0, 10);
+    if (byDate[d]) byDate[d].detections++;
+  }
+
+  // ── Latency analysis ─────────────────────────────────────────────────────
+  const latencyBuckets = {};
+  for (const ev of events) {
+    if (!ev.duration_ms || !ev.event_type) continue;
+    if (!latencyBuckets[ev.event_type]) latencyBuckets[ev.event_type] = [];
+    latencyBuckets[ev.event_type].push(ev.duration_ms);
+  }
+
+  const avg_latency_by_type = {};
+  const p95_latency         = {};
+  for (const [et, vals] of Object.entries(latencyBuckets)) {
+    vals.sort((a, b) => a - b);
+    avg_latency_by_type[et] = vals.reduce((s, v) => s + v, 0) / vals.length;
+    p95_latency[et]         = vals[Math.floor(vals.length * 0.95)] ?? vals[vals.length - 1];
+  }
+
+  // ── Anomaly detection — delete spikes ───────────────────────────────────
+  const deleteByDate = {};
+  for (const ev of events) {
+    if (ev.event_type !== 'file_delete') continue;
+    const d = ev.timestamp?.slice(0, 10);
+    if (!d) continue;
+    deleteByDate[d] = (deleteByDate[d] || 0) + 1;
+  }
+  const delete_spikes = Object.entries(deleteByDate)
+    .filter(([, cnt]) => cnt > 5)
+    .map(([date, delete_count]) => ({ date, delete_count }));
+
+  // ── Suspicious users (> 50 events in an hour) ───────────────────────────
+  const userHourMap = {};
+  for (const ev of events) {
+    if (!ev.user_id || !ev.timestamp) continue;
+    const hour = ev.timestamp.slice(0, 13); // YYYY-MM-DDTHH
+    const key  = `${ev.user_id}|${hour}`;
+    userHourMap[key] = (userHourMap[key] || 0) + 1;
+  }
+  const suspicious_users = Object.entries(userHourMap)
+    .filter(([, cnt]) => cnt > 50)
+    .map(([key, event_count]) => {
+      const [user_id, hour] = key.split('|');
+      return { user_id, hour, event_count };
+    });
+
+  // ── Today's counts ───────────────────────────────────────────────────────
+  const todayIdx       = dateRange.indexOf(today);
+  const todayUploads   = todayIdx >= 0 ? uploads[todayIdx]    : 0;
+  const todayDetections= todayIdx >= 0 ? detections[todayIdx] : 0;
+  const todayBytes     = todayIdx >= 0 ? bytesDay[todayIdx]   : 0;
 
   return {
-    generated_at:    new Date().toISOString(),
-    daily_activity:  { dates: [], uploads: [], downloads: [], detections: [], total_bytes_per_day: [] },
-    anomaly_detection: { delete_spikes: [], suspicious_users: [] },
-    ai_usage_stats:  { verdict_counts: {}, avg_score_by_type: {}, top_file_types: [] },
-    storage_analytics: { top_uploaders: [], file_type_distribution: [] },
-    latency_analysis:  { avg_latency_by_type: {}, p95_latency: {}, busiest_hours: [] },
-    user_behaviour:    { daily_active_users: [], returning_users_count: 0, common_sequences: [] },
-    _live_counts: counts,
+    generated_at: now.toISOString(),
+    daily_activity: {
+      dates,
+      uploads,
+      downloads,
+      detections,
+      total_bytes_per_day: bytesDay,
+    },
+    anomaly_detection: {
+      delete_spikes,
+      suspicious_users,
+    },
+    ai_usage_stats: {
+      verdict_counts:      verdictMap,
+      avg_score_by_type:   {},
+      top_file_types:      [],
+    },
+    storage_analytics: {
+      top_uploaders:         [],
+      file_type_distribution,
+    },
+    latency_analysis: {
+      avg_latency_by_type,
+      p95_latency,
+      busiest_hours: [],
+    },
+    user_behaviour: {
+      daily_active_users:    [],
+      returning_users_count: 0,
+      common_sequences:      [],
+    },
+    // Convenience summary for frontend metric cards
+    _summary: {
+      today_uploads:    todayUploads,
+      today_detections: todayDetections,
+      today_bytes:      todayBytes,
+      total_files:      allFiles.length,
+    },
+  };
+}
+
+// ─── Empty fallback (all tiers failed) ───────────────────────────────────────
+
+function emptyPayload() {
+  return {
+    generated_at: new Date().toISOString(),
+    daily_activity:   { dates: [], uploads: [], downloads: [], detections: [], total_bytes_per_day: [] },
+    anomaly_detection:{ delete_spikes: [], suspicious_users: [] },
+    ai_usage_stats:   { verdict_counts: {}, avg_score_by_type: {}, top_file_types: [] },
+    storage_analytics:{ top_uploaders: [], file_type_distribution: [] },
+    latency_analysis: { avg_latency_by_type: {}, p95_latency: {}, busiest_hours: [] },
+    user_behaviour:   { daily_active_users: [], returning_users_count: 0, common_sequences: [] },
   };
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
 
 router.get('/', authenticateToken, async (req, res) => {
-  res.set('Cache-Control', 'max-age=300');
+  res.set('Cache-Control', 'max-age=60');
 
   // Tier 1 — HDFS
-  if (HDFS_BASE) {
-    try {
-      const data = await readFromHDFS();
-      logger.info('[analytics] Served from HDFS', { requestId: req.id });
-      return res.status(200).json({ source: 'hdfs', ...data });
-    } catch (err) {
-      logger.warn('[analytics] HDFS read failed, trying local cache', {
-        requestId: req.id,
-        error:     err.message,
-      });
-    }
+  try {
+    const data = await readFromHDFS();
+    logger.info('[analytics] Served from HDFS', { requestId: req.id });
+    return res.status(200).json({ source: 'hdfs', ...data });
+  } catch (err) {
+    logger.warn('[analytics] HDFS unavailable, trying local cache', { error: err.message });
   }
 
   // Tier 2 — local file
@@ -114,27 +286,20 @@ router.get('/', authenticateToken, async (req, res) => {
     logger.info('[analytics] Served from local cache', { requestId: req.id });
     return res.status(200).json({ source: 'local_cache', ...data });
   } catch (err) {
-    logger.warn('[analytics] Local cache read failed, trying Supabase', {
-      requestId: req.id,
-      error:     err.message,
-    });
+    logger.warn('[analytics] Local cache unavailable, deriving from Supabase', { error: err.message });
   }
 
-  // Tier 3 — Supabase
+  // Tier 3 — Supabase live analytics
   try {
     const data = await readFromSupabase();
-    logger.info('[analytics] Served from Supabase live counts', { requestId: req.id });
+    logger.info('[analytics] Served from Supabase live', { requestId: req.id });
     return res.status(200).json({ source: 'supabase_live', ...data });
   } catch (err) {
-    logger.error('[analytics] All 3 tiers failed', {
-      requestId: req.id,
-      error:     err.message,
-    });
+    logger.error('[analytics] All tiers failed, returning empty payload', { error: err.message });
   }
 
-  return res.status(503).json({
-    error: 'Analytics service unavailable. Run the analytics job or check your HDFS connection.',
-  });
+  // Tier 4 — graceful empty (never 503)
+  return res.status(200).json({ source: 'empty', ...emptyPayload() });
 });
 
 // ─── POST /trigger ────────────────────────────────────────────────────────────
@@ -142,30 +307,30 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/trigger', authenticateToken, (req, res) => {
   logger.info('[analytics] Triggering analytics job', { requestId: req.id });
 
-  // spawn is safe from shell injection — arguments are never interpolated
+  try {
+    fs.accessSync(SCRIPT_PATH, fs.constants.F_OK);
+  } catch {
+    logger.warn('[analytics] run_analytics.sh not found', { path: SCRIPT_PATH });
+    return res.status(202).json({
+      status:  'skipped',
+      message: 'Analytics script not found. Analytics data is served live from Supabase.',
+    });
+  }
+
   const child = spawn('bash', [SCRIPT_PATH], {
     env:      { ...process.env },
     detached: true,
     stdio:    ['ignore', 'pipe', 'pipe'],
   });
 
-  child.stdout.on('data', d =>
-    logger.info('[analytics/trigger] stdout: ' + d.toString().trim())
-  );
-  child.stderr.on('data', d =>
-    logger.warn('[analytics/trigger] stderr: ' + d.toString().trim())
-  );
-
-  child.on('error', err =>
-    logger.error('[analytics/trigger] spawn error', { error: err.message })
-  );
-
-  // Unref so the process can outlive the request
+  child.stdout.on('data', d => logger.info('[analytics/trigger] ' + d.toString().trim()));
+  child.stderr.on('data', d => logger.warn('[analytics/trigger] ' + d.toString().trim()));
+  child.on('error', err => logger.error('[analytics/trigger] spawn error', { error: err.message }));
   child.unref();
 
   return res.status(202).json({
     status:  'triggered',
-    message: 'Analytics job started in background. Results will be available shortly.',
+    message: 'Analytics job started in background. Refresh in ~30s to see updated results.',
   });
 });
 

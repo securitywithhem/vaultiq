@@ -64,6 +64,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Detection logic is now unified ───────────────────────────────────────────
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

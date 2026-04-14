@@ -6,6 +6,30 @@ const TextAiDetection = () => (
   <div className="min-h-screen bg-gray-950 font-sans antialiased">
     <AppNavbar />
 
+<<<<<<< HEAD
+      <main className={styles.main}>
+        {/* ── Header ── */}
+        <div className={styles.header}>
+          <div>
+            <h1 className={styles.title}>AI Deep Scan</h1>
+            <p className={styles.subtitle}>
+              Detect AI-generated content in your documents using RoBERTa + statistical ensemble models.
+            </p>
+          </div>
+          <div className={styles.modelPills}>
+            <span className={styles.pill}>RoBERTa</span>
+            <span className={styles.pill}>GPT-2 Perplexity</span>
+            <span className={styles.pill}>Statistical LR</span>
+          </div>
+        </div>
+
+        {/* ── Full-width detector ── */}
+        <AIDetector />
+      </main>
+    </div>
+  );
+};
+=======
     <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
       {/* Header */}
@@ -31,5 +55,6 @@ const TextAiDetection = () => (
     </main>
   </div>
 );
+>>>>>>> main
 
 export default TextAiDetection;

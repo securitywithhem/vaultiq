@@ -48,13 +48,26 @@ export const useFiles = () => {
   const deleteFile = useCallback(async (id) => {
     const previousFiles = [...files];
     setFiles(prev => prev.filter(f => f.id !== id));
-    
+
     try {
       await fileService.deleteFile(id);
-      toast.success('File removed', { icon: '🗑️' });
+      toast.success('File removed');
     } catch (err) {
       setFiles(previousFiles);
       toast.error('Failed to delete file');
+    }
+  }, [files]);
+
+  const bulkDelete = useCallback(async (ids) => {
+    const previousFiles = [...files];
+    setFiles(prev => prev.filter(f => !ids.includes(f.id)));
+    try {
+      const res = await fileService.bulkDeleteFiles(ids);
+      const count = res?.data?.deleted ?? ids.length;
+      toast.success(`${count} file${count !== 1 ? 's' : ''} deleted`);
+    } catch {
+      setFiles(previousFiles);
+      toast.error('Bulk delete failed');
     }
   }, [files]);
 
@@ -66,6 +79,7 @@ export const useFiles = () => {
     fetchFiles,
     loadMore,
     addFileOptimistic,
-    deleteFile
+    deleteFile,
+    bulkDelete
   };
 };

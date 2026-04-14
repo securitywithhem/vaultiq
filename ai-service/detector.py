@@ -15,13 +15,23 @@ from typing import Any
 
 import joblib
 import numpy as np
-import torch
-from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    GPT2LMHeadModel,
-    GPT2TokenizerFast,
-)
+
+try:
+    import torch
+    from transformers import (
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+    )
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+
+try:
+    import similarity
+    import similarity_ensemble
+    _SIMILARITY_AVAILABLE = True
+except Exception:
+    _SIMILARITY_AVAILABLE = False
 
 # For logistic regression typing, not strictly required at runtime for inference
 # as we load from joblib, but good for DUMMY class definition.
@@ -32,73 +42,69 @@ MODELS_DIR = Path(__file__).parent / "models"
 LR_MODEL_PATH = MODELS_DIR / "lr_model.pkl"
 
 # Global model references
-_gpt2_model = None
-_gpt2_tokenizer = None
 _roberta_model = None
 _roberta_tokenizer = None
 _lr_model = None
+_gpt2_model = None
+_gpt2_tokenizer = None
 _using_dummy_lr: bool = False  # Fix 4: track whether LR is real or dummy
 
 
 def load_models() -> None:
     """Pre-load all required models for the ensemble."""
-    global _gpt2_model, _gpt2_tokenizer, _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr
+    global _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr, _gpt2_model, _gpt2_tokenizer
 
     start_time = time.time()
-    logger.info("Loading NLP models. This might take a moment...")
 
-    # 1. Load GPT2 for perplexity scoring
-    _gpt2_tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
-    _gpt2_model = GPT2LMHeadModel.from_pretrained("gpt2")
-    _gpt2_model.eval()
+    if not _TORCH_AVAILABLE:
+        logger.warning("torch/transformers not installed — running in statistical-only mode.")
+    else:
+        logger.info("Loading NLP models. This might take a moment...")
+        try:
+            # 1. Load RoBERTa for text classification
+            roberta_name = "roberta-base-openai-detector"
+            _roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_name)
+            _roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_name)
+            _roberta_model.eval()
+        except Exception as e:
+            logger.warning(f"RoBERTa load failed: {e}")
 
-    # 2. Load RoBERTa for text classification
-    roberta_name = "roberta-base-openai-detector"
-    _roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_name)
-    _roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_name)
-    _roberta_model.eval()
+        try:
+            # 2. Load GPT-2 for statistical perplexity feature
+            from transformers import GPT2LMHeadModel, GPT2Tokenizer
+            gpt2_name = "gpt2"
+            _gpt2_tokenizer = GPT2Tokenizer.from_pretrained(gpt2_name)
+            _gpt2_model = GPT2LMHeadModel.from_pretrained(gpt2_name)
+            _gpt2_model.eval()
+        except Exception as e:
+            logger.warning(f"GPT-2 load failed: {e}")
 
-    # 3. Load or create Logistic Regression model
+    # 3. Load or create Logistic Regression model (always attempted — LR needs no torch)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     if LR_MODEL_PATH.exists():
-        _lr_model = joblib.load(LR_MODEL_PATH)
-        _using_dummy_lr = False
-        logger.info(f"Loaded Logistic Regression from {LR_MODEL_PATH}")
-    else:
-        # Fix 4: emit a visible warning so degraded accuracy is never silent
-        logger.warning(
-            "⚠️  lr_model.pkl not found — LR model running in DUMMY MODE. "
-            "AI detection accuracy is degraded: the LR component always returns 0.5. "
-            "Train and place lr_model.pkl in the models/ directory to enable full accuracy."
-        )
+        try:
+            _lr_model = joblib.load(LR_MODEL_PATH)
+            _using_dummy_lr = False
+            logger.info(f"Loaded Logistic Regression from {LR_MODEL_PATH}")
+        except Exception as e:
+            logger.warning(f"LR model load failed: {e}")
+
+    if _lr_model is None:
+        logger.warning("LR model unavailable — using statistical heuristics only.")
         _using_dummy_lr = True
 
         class DummyLR:
             def predict_proba(self, X: np.ndarray) -> np.ndarray:
-                # Shape (batch_size, n_classes) - index 1 is AI
                 return np.full((X.shape[0], 2), 0.5)
 
         _lr_model = DummyLR()
-        try:
-            joblib.dump(_lr_model, LR_MODEL_PATH)
-        except Exception as e:
-            logger.warning(f"Failed to save dummy model: {e}")
 
-    logger.info(f"Models loaded in {time.time() - start_time:.2f} seconds.")
+    logger.info(f"Models ready in {time.time() - start_time:.2f}s.")
 
 
 def is_model_loaded() -> bool:
-    """Check whether the ML models have been initialised."""
-    return all(
-        m is not None
-        for m in (
-            _gpt2_model,
-            _gpt2_tokenizer,
-            _roberta_model,
-            _roberta_tokenizer,
-            _lr_model,
-        )
-    )
+    """Service is ready when the LR model is available (torch models are optional extras)."""
+    return _lr_model is not None
 
 
 def is_dummy_lr() -> bool:
@@ -260,6 +266,30 @@ def detect(chunks: list[str]) -> dict[str, Any]:
 
     avg_score = round(avg_score, 2)
 
+    # --- New: Similarity Integration ---
+    # Aggregate similarity across all chunks
+    overall_similarity: float = 0.0
+    matched_excerpts: list[str] = []
+    
+    for chunk in chunks:
+        if not chunk.strip():
+            continue
+        try:
+            # Perform similarity search for each chunk
+            # similarity.search returns (cosine, jaccard, semantic, matched_text)
+            cosine, jaccard, semantic, matched_text = similarity.search(chunk)
+            # similarity_ensemble computes weighted average
+            s_agg = similarity_ensemble.aggregate_scores(cosine, jaccard, semantic, chunk, matched_text)
+            overall_similarity += s_agg["plagiarism_score"]
+            if s_agg["verdict"] != "original":
+                # Keep track of significant matches
+                matched_excerpts.append(s_agg["matched_excerpt"])
+        except Exception as e:
+            logger.error(f"Error computing similarity for chunk: {e}")
+
+    final_similarity = round(overall_similarity / len(chunks) if chunks else 0.0, 4)
+    # ------------------------------------
+
     if avg_score < 0.4:
         verdict = "human"
     elif avg_score <= 0.7:
@@ -284,4 +314,8 @@ def detect(chunks: list[str]) -> dict[str, Any]:
         "confidence": confidence,
         "chunk_scores": [round(s, 2) for s in chunk_scores],
         "warning": warning,
+        # Integrated similarity metrics
+        "similarity_score": final_similarity,
+        "similarity_verdict": "high" if final_similarity > 0.65 else "medium" if final_similarity > 0.3 else "low",
+        "top_matches": list(set(matched_excerpts))[:3] # unique excerpts
     }

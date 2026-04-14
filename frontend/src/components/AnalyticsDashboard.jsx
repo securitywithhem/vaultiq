@@ -16,6 +16,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Navbar from './Navbar';
 import { fetchAnalytics, triggerAnalyticsJob } from '../api/analyticsApi';
+import { detectVaultFiles } from '../api/aiDetectApi';
+import { fileService } from '../services/fileService';
 import toast from 'react-hot-toast';
 import {
   LineChart, Line,
@@ -26,28 +28,29 @@ import {
 } from 'recharts';
 import styles from './AnalyticsDashboard.module.css';
 
-// ─── Palette ─────────────────────────────────────────────────────────────────
+// ─── Palette — Apple system colors ───────────────────────────────────────────
 
-const COLOR_UPLOAD    = '#378ADD';
-const COLOR_DOWNLOAD  = '#10B981';
-const COLOR_DETECTION = '#8B5CF6';
+const COLOR_UPLOAD    = '#0a84ff';   // Apple blue
+const COLOR_DOWNLOAD  = '#30d158';   // Apple green
+const COLOR_DETECTION = '#bf5af2';   // Apple purple
 const VERDICT_COLORS  = {
-  'Human':        '#4ade80',
-  'Mixed':        '#fbbf24',
-  'AI-Generated': '#ef4444',
+  'Human':        '#30d158',         // Apple green
+  'Mixed':        '#ff9f0a',         // Apple amber
+  'AI-Generated': '#ff453a',         // Apple red
 };
-const BAR_COLOR       = '#378ADD';
+const BAR_COLOR       = '#0a84ff';
 
 const TT_STYLE = {
   contentStyle: {
-    background:   '#1f2937',
-    border:       '1px solid #374151',
-    borderRadius: '8px',
-    color:        '#f9fafb',
+    background:   '#1c1c1e',
+    border:       '1px solid rgba(255,255,255,0.09)',
+    borderRadius: '10px',
+    color:        '#f5f5f7',
     fontSize:     '12px',
+    fontFamily:   '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif',
   },
-  itemStyle:  { color: '#9ca3af' },
-  cursor:     { fill: 'rgba(55,138,221,0.07)' },
+  itemStyle:  { color: '#98989e' },
+  cursor:     { fill: 'rgba(10,132,255,0.06)' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,17 +82,19 @@ function Skeleton({ height = 80 }) {
 
 function SourceBadge({ source }) {
   const map = {
-    hdfs:          { label: 'HDFS',        cls: styles.badgeHdfs  },
-    local_cache:   { label: 'Local Cache', cls: styles.badgeLocal },
-    supabase_live: { label: 'Live',        cls: styles.badgeLive  },
+    hdfs:          { label: 'HDFS',        cls: styles.badgeHdfs    },
+    local_cache:   { label: 'Local Cache', cls: styles.badgeLocal   },
+    supabase_live: { label: 'Live',        cls: styles.badgeLive    },
+    empty:         { label: 'No Data',     cls: styles.badgeUnknown },
   };
   const { label, cls } = map[source] || { label: source || '—', cls: styles.badgeUnknown };
   return <span className={`${styles.sourceBadge} ${cls}`}>{label}</span>;
 }
 
-function MetricCard({ label, value, danger }) {
+function MetricCard({ label, value, danger, accent }) {
   return (
-    <div className={`${styles.metricCard} ${danger ? styles.metricDanger : ''}`}>
+    <div className={`${styles.metricCard} ${danger ? styles.metricDanger : ''}`}
+         style={accent ? { borderLeft: `3px solid ${accent}` } : {}}>
       <p className={styles.metricLabel}>{label}</p>
       <p className={styles.metricValue}>{value}</p>
     </div>
@@ -135,26 +140,25 @@ const AnalyticsDashboard = () => {
     }
   };
 
-  // ── Derived values (safe optional chaining + fallbacks) ───────────────────
+  // ── Derived values — all memoised on `data` so downstream hooks get stable refs ──
 
-  const da     = data?.daily_activity    || {};
-  const ad     = data?.anomaly_detection || {};
-  const ai     = data?.ai_usage_stats    || {};
-  const sa     = data?.storage_analytics || {};
-  const la     = data?.latency_analysis  || {};
+  const da = useMemo(() => data?.daily_activity    || {}, [data]);
+  const ad = useMemo(() => data?.anomaly_detection || {}, [data]);
+  const ai = useMemo(() => data?.ai_usage_stats    || {}, [data]);
+  const sa = useMemo(() => data?.storage_analytics || {}, [data]);
+  const la = useMemo(() => data?.latency_analysis  || {}, [data]);
 
-  const dates      = da.dates              || [];
-  const uploads    = da.uploads            || [];
-  const downloads  = da.downloads          || [];
-  const detections = da.detections         || [];
-  const bytesDay   = da.total_bytes_per_day || [];
+  const dates      = useMemo(() => da.dates               || [], [da]);
+  const uploads    = useMemo(() => da.uploads             || [], [da]);
+  const downloads  = useMemo(() => da.downloads           || [], [da]);
+  const detections = useMemo(() => da.detections          || [], [da]);
+  const bytesDay   = useMemo(() => da.total_bytes_per_day || [], [da]);
 
   // Today's metrics
-  const todayIdx       = useMemo(() => dates.lastIndexOf(todayISO()), [dates]);
-  const todayUploads   = todayIdx >= 0 ? (uploads[todayIdx] || 0)   : (uploads.at(-1) || 0);
-  const todayBytes     = todayIdx >= 0 ? (bytesDay[todayIdx] || 0)  : (bytesDay.at(-1) || 0);
-  const todayDetects   = todayIdx >= 0 ? (detections[todayIdx] || 0): (detections.at(-1) || 0);
-  const anomalyCount   = (ad.delete_spikes || []).length;
+  const todayIdx     = useMemo(() => dates.lastIndexOf(todayISO()), [dates]);
+  const todayBytes   = todayIdx >= 0 ? (bytesDay[todayIdx]   || 0) : (bytesDay.at(-1)   || 0);
+  const todayDetects = todayIdx >= 0 ? (detections[todayIdx] || 0) : (detections.at(-1) || 0);
+  const anomalyCount = (ad.delete_spikes || []).length;
 
   // Line chart data — last 14 days
   const lineData = useMemo(() => {
@@ -162,7 +166,7 @@ const AnalyticsDashboard = () => {
     return last14.map((date, i) => {
       const offset = dates.length - last14.length + i;
       return {
-        date:       date.slice(5),           // show MM-DD
+        date:       date.slice(5),
         uploads:    uploads[offset]    || 0,
         downloads:  downloads[offset]  || 0,
         detections: detections[offset] || 0,
@@ -174,16 +178,16 @@ const AnalyticsDashboard = () => {
   const verdictData = useMemo(() => {
     const vc = ai.verdict_counts || {};
     return Object.entries(vc).map(([name, value]) => ({ name, value }));
-  }, [ai.verdict_counts]);
+  }, [ai]);
 
   // Horizontal bar — storage by file type (top 8)
   const storageBarData = useMemo(() => {
     const dist = sa.file_type_distribution || [];
     return dist.slice(0, 8).map(d => ({
-      type:  d.file_type || 'unknown',
-      mb:    parseFloat(((d.total_bytes || 0) / 1_048_576).toFixed(1)),
+      type: d.file_type || 'unknown',
+      mb:   parseFloat(((d.total_bytes || 0) / 1_048_576).toFixed(1)),
     }));
-  }, [sa.file_type_distribution]);
+  }, [sa]);
 
   // Latency table rows
   const latencyRows = useMemo(() => {
@@ -194,7 +198,66 @@ const AnalyticsDashboard = () => {
       avg:       avg[et],
       p95:       p95[et] ?? '—',
     }));
-  }, [la.avg_latency_by_type, la.p95_latency]);
+  }, [la]);
+
+  // ── Vault file AI analysis state ────────────────────────────────────────
+  const [vaultFiles,       setVaultFiles]       = useState([]);
+  const [vaultLoading,     setVaultLoading]     = useState(false);
+  const [vaultSearch,      setVaultSearch]      = useState('');
+  const [selectedVaultIds, setSelectedVaultIds] = useState([]);
+  const [vaultResults,     setVaultResults]     = useState(null);
+  const [vaultAnalysing,   setVaultAnalysing]   = useState(false);
+  const [vaultError,       setVaultError]       = useState('');
+
+  const loadVaultFiles = useCallback(() => {
+    setVaultLoading(true);
+    fileService.getFiles(0)
+      .then(d => setVaultFiles(d.files || []))
+      .catch(() => setVaultFiles([]))
+      .finally(() => setVaultLoading(false));
+  }, []);
+
+  useEffect(() => { loadVaultFiles(); }, [loadVaultFiles]);
+
+  const filteredVault = useMemo(() =>
+    vaultFiles.filter(f => f.filename.toLowerCase().includes(vaultSearch.toLowerCase()))
+  , [vaultFiles, vaultSearch]);
+
+  const toggleVaultSel = (id) => {
+    setSelectedVaultIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 5 ? [...prev, id] : prev
+    );
+  };
+
+  const handleVaultAnalyse = async () => {
+    if (!selectedVaultIds.length) return;
+    setVaultAnalysing(true);
+    setVaultError('');
+    setVaultResults(null);
+    try {
+      const data = await detectVaultFiles(selectedVaultIds);
+      setVaultResults(data.results);
+      toast.success('Vault file analysis complete');
+    } catch (err) {
+      setVaultError(err.message);
+    } finally {
+      setVaultAnalysing(false);
+    }
+  };
+
+  const renderVerdictBadge = (verdict) => {
+    const map = {
+      human:        { label: 'Human',       color: '#30d158', bg: 'rgba(48,209,88,0.12)',  border: 'rgba(48,209,88,0.25)'  },
+      mixed:        { label: 'Mixed',        color: '#ff9f0a', bg: 'rgba(255,159,10,0.12)', border: 'rgba(255,159,10,0.25)' },
+      ai_generated: { label: 'AI Generated', color: '#ff453a', bg: 'rgba(255,69,58,0.12)',  border: 'rgba(255,69,58,0.25)'  },
+    };
+    const v = map[verdict] || map.mixed;
+    return (
+      <span style={{ background: v.bg, color: v.color, border: `1px solid ${v.border}`, padding: '3px 10px', borderRadius: 9999, fontWeight: 600, fontSize: '0.75rem', letterSpacing: '-0.1px' }}>
+        {v.label}
+      </span>
+    );
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -203,16 +266,15 @@ const AnalyticsDashboard = () => {
       <Navbar />
       <main className={styles.main}>
 
-        {/* ── A. Header ──────────────────────────────────────────────────── */}
+        {/* ── A. Header (source badge + timestamp + trigger, no big title) ── */}
         <div className={styles.header}>
           <div>
             <div className={styles.titleRow}>
-              <h1 className={styles.title}>VaultIQ Analytics</h1>
               {data && <SourceBadge source={data.source} />}
+              <p className={styles.subtitle} style={{ margin: 0 }}>
+                Last updated:&nbsp;{data ? fmtDate(data.generated_at) : '—'}
+              </p>
             </div>
-            <p className={styles.subtitle}>
-              Last updated:&nbsp;{data ? fmtDate(data.generated_at) : '—'}
-            </p>
           </div>
 
           <button
@@ -268,13 +330,14 @@ const AnalyticsDashboard = () => {
           <>
             {/* ── B. Metric cards ─────────────────────────────────────────── */}
             <div className={styles.metricsGrid}>
-              <MetricCard label="Events Today"           value={(todayUploads + todayDetects).toLocaleString()} />
-              <MetricCard label="Storage Uploaded Today" value={fmtMB(todayBytes)} />
-              <MetricCard label="AI Detections Today"    value={todayDetects.toLocaleString()} />
+              <MetricCard label="Total Vault Files"      value={(data._summary?.total_files ?? 0).toLocaleString()} accent="#0a84ff" />
+              <MetricCard label="Storage Uploaded Today" value={fmtMB(todayBytes)} accent="#30d158" />
+              <MetricCard label="AI Detections Today"    value={todayDetects.toLocaleString()} accent="#bf5af2" />
               <MetricCard
                 label="Anomalies Detected"
                 value={anomalyCount.toLocaleString()}
                 danger={anomalyCount > 0}
+                accent={anomalyCount > 0 ? '#ff453a' : 'rgba(255,255,255,0.09)'}
               />
             </div>
 
@@ -284,14 +347,14 @@ const AnalyticsDashboard = () => {
               <p className={styles.chartSub}>Uploads, downloads, and AI detections — last 14 days</p>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={lineData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="date"      stroke="#6b7280" tick={{ fontSize: 11 }} />
-                  <YAxis                     stroke="#6b7280" tick={{ fontSize: 11 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />
+                  <XAxis dataKey="date"      stroke="#636366" tick={{ fontSize: 11, fill: '#636366' }} />
+                  <YAxis                     stroke="#636366" tick={{ fontSize: 11, fill: '#636366' }} />
                   <Tooltip {...TT_STYLE} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
-                  <Line type="monotone" dataKey="uploads"    stroke={COLOR_UPLOAD}    strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="Uploads" />
-                  <Line type="monotone" dataKey="downloads"  stroke={COLOR_DOWNLOAD}  strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="Downloads" />
-                  <Line type="monotone" dataKey="detections" stroke={COLOR_DETECTION} strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="AI Detections" />
+                  <Legend wrapperStyle={{ fontSize: 12, color: '#98989e' }} />
+                  <Line type="monotone" dataKey="uploads"    stroke={COLOR_UPLOAD}    strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="Uploads"       isAnimationActive={false} />
+                  <Line type="monotone" dataKey="downloads"  stroke={COLOR_DOWNLOAD}  strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="Downloads"    isAnimationActive={false} />
+                  <Line type="monotone" dataKey="detections" stroke={COLOR_DETECTION} strokeWidth={2} dot={false} activeDot={{ r: 4 }} name="AI Detections" isAnimationActive={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -304,7 +367,7 @@ const AnalyticsDashboard = () => {
                 <p className={styles.chartTitle}>AI Verdict Distribution</p>
                 <p className={styles.chartSub}>Human / Mixed / AI-Generated</p>
                 {verdictData.length === 0 ? (
-                  <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No AI detection data yet.</p>
+                  <p style={{ color: '#636366', fontSize: '0.8125rem' }}>No AI detection data yet.</p>
                 ) : (
                   <ResponsiveContainer width="100%" height={240}>
                     <PieChart>
@@ -317,6 +380,7 @@ const AnalyticsDashboard = () => {
                         outerRadius={90}
                         innerRadius={42}
                         paddingAngle={3}
+                        isAnimationActive={false}
                         label={({ name, percent }) =>
                           `${name} ${(percent * 100).toFixed(0)}%`
                         }
@@ -343,7 +407,7 @@ const AnalyticsDashboard = () => {
                 <p className={styles.chartTitle}>Storage by File Type</p>
                 <p className={styles.chartSub}>Total MB uploaded per file type</p>
                 {storageBarData.length === 0 ? (
-                  <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No upload data yet.</p>
+                  <p style={{ color: '#636366', fontSize: '0.8125rem' }}>No upload data yet.</p>
                 ) : (
                   <ResponsiveContainer width="100%" height={240}>
                     <BarChart
@@ -351,17 +415,17 @@ const AnalyticsDashboard = () => {
                       data={storageBarData}
                       margin={{ top: 0, right: 24, left: 4, bottom: 0 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
-                      <XAxis type="number" stroke="#6b7280" tick={{ fontSize: 11 }} unit=" MB" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" horizontal={false} />
+                      <XAxis type="number" stroke="#636366" tick={{ fontSize: 11, fill: '#636366' }} unit=" MB" />
                       <YAxis
                         type="category"
                         dataKey="type"
                         width={60}
-                        stroke="#6b7280"
-                        tick={{ fontSize: 11 }}
+                        stroke="#636366"
+                        tick={{ fontSize: 11, fill: '#636366' }}
                       />
                       <Tooltip {...TT_STYLE} formatter={(v) => [`${v} MB`, 'Storage']} />
-                      <Bar dataKey="mb" fill={BAR_COLOR} radius={[0, 4, 4, 0]} name="MB" />
+                      <Bar dataKey="mb" fill={BAR_COLOR} radius={[0, 4, 4, 0]} name="MB" isAnimationActive={false} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -409,7 +473,7 @@ const AnalyticsDashboard = () => {
               <p className={styles.chartSub}>Average and p95 response times per event type</p>
 
               {latencyRows.length === 0 ? (
-                <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No latency data yet.</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>No latency data yet.</p>
               ) : (
                 <table className={styles.latencyTable}>
                   <thead>
@@ -436,6 +500,112 @@ const AnalyticsDashboard = () => {
             </div>
           </>
         )}
+
+        {/* ── H. Analyse Vault Files ───────────────────────────────────── */}
+        <div className={styles.chartCard}>
+          <p className={styles.chartTitle}>Analyse Vault Files</p>
+          <p className={styles.chartSub}>
+            Select up to 5 files from your vault and run AI-content detection without re-uploading.
+          </p>
+
+          {/* Search */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, transition: 'border-color 0.2s' }}>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="var(--text-muted)">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search vault files…"
+              value={vaultSearch}
+              onChange={e => setVaultSearch(e.target.value)}
+              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '0.875rem', fontFamily: 'var(--font-sans)' }}
+            />
+          </div>
+
+          {/* File list */}
+          {vaultLoading ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>Loading vault files…</p>
+          ) : filteredVault.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+              {vaultSearch ? 'No files match your search.' : 'No vault files yet. Upload files from the Dashboard first.'}
+            </p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+              {filteredVault.map(f => {
+                const checked  = selectedVaultIds.includes(f.id);
+                const disabled = !checked && selectedVaultIds.length >= 5;
+                return (
+                  <li
+                    key={f.id}
+                    onClick={() => !disabled && toggleVaultSel(f.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '9px 12px', borderRadius: 8,
+                      border: `1px solid ${checked ? 'rgba(10,132,255,0.4)' : 'var(--border)'}`,
+                      background: checked ? 'rgba(10,132,255,0.08)' : 'var(--bg-elevated)',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.4 : 1,
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <input type="checkbox" checked={checked} readOnly disabled={disabled} style={{ accentColor: '#0a84ff' }} />
+                    <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.filename}</span>
+                    <span style={{ fontSize: '0.6875rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                      {f.mime_type?.split('/').pop()?.toUpperCase() || 'FILE'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {selectedVaultIds.length > 0 && (
+            <p style={{ fontSize: '0.8125rem', color: 'var(--blue)', marginBottom: 10, fontWeight: 500 }}>
+              {selectedVaultIds.length} file{selectedVaultIds.length > 1 ? 's' : ''} selected
+            </p>
+          )}
+
+          <button
+            onClick={handleVaultAnalyse}
+            disabled={vaultAnalysing || selectedVaultIds.length === 0}
+            style={{
+              background: selectedVaultIds.length ? 'var(--blue)' : 'var(--bg-elevated)',
+              color: selectedVaultIds.length ? '#fff' : 'var(--text-muted)',
+              border: 'none', padding: '10px 20px', borderRadius: 10,
+              fontWeight: 600, fontSize: '0.875rem', fontFamily: 'var(--font-sans)',
+              cursor: selectedVaultIds.length ? 'pointer' : 'not-allowed',
+              opacity: vaultAnalysing ? 0.6 : 1,
+              transition: 'all 0.2s',
+            }}
+          >
+            {vaultAnalysing ? 'Analysing…' : 'Run AI Analysis'}
+          </button>
+
+          {vaultError && (
+            <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,69,58,0.08)', color: 'var(--red)', border: '1px solid rgba(255,69,58,0.2)', borderRadius: 8, fontSize: '0.875rem', fontFamily: 'var(--font-sans)' }}>
+              {vaultError}
+            </div>
+          )}
+
+          {vaultResults && (
+            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {vaultResults.map((r, i) => (
+                <div key={i} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                  <p style={{ margin: '0 0 8px', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)', letterSpacing: '-0.2px' }}>{r.filename}</p>
+                  {r.status === 'error' ? (
+                    <p style={{ color: 'var(--amber)', fontSize: '0.8125rem' }}>⚠ {r.error}</p>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '1.375rem', fontWeight: 700, letterSpacing: '-0.5px', color: 'var(--text-primary)' }}>{Math.round((r.score || 0) * 100)}%</span>
+                      {renderVerdictBadge(r.verdict)}
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>Confidence: {r.confidence}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
       </main>
     </div>
