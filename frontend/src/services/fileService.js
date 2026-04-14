@@ -47,15 +47,13 @@ export const fileService = {
     return response.data;
   },
 
-<<<<<<< HEAD
   bulkDeleteFiles: async (fileIds) => {
     const response = await api.delete('/api/files/bulk', { data: { fileIds } });
     return response.data;
   },
-=======
+
   getStats: async () => {
     const response = await api.get('/api/files/stats');
     return response.data.data; // { totalFiles, storageBytes }
   }
->>>>>>> main
 };

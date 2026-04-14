@@ -158,11 +158,16 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 // ─── GET /me ────────────────────────────────────────────────────────
 router.get('/me', authenticateToken, async (req, res) => {
   try {
+    // Fetch full_name from Supabase user metadata so Dashboard can greet by name
+    const { data: userData } = await supabaseAdmin.auth.admin.getUserById(req.user.id);
+    const fullName = userData?.user?.user_metadata?.full_name || null;
+
     return res.status(200).json({
       data: {
         user: {
           id: req.user.id,
-          email: req.user.email
+          email: req.user.email,
+          fullName,
         }
       }
     });
