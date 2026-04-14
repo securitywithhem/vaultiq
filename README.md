@@ -24,6 +24,7 @@ VaultIQ is a full-stack, production-grade document storage platform built around
 ## Table of Contents
 
 - [System Architecture](#system-architecture)
+- [End-to-End Project Flow](#end-to-end-project-flow)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [AI Detection Deep-Dive](#ai-detection-deep-dive)
@@ -64,10 +65,10 @@ VaultIQ is composed of four independently deployable services that communicate o
     │ (files)  │  │   (port 8001)    │          │  (event logs) │
     └──────────┘  └──────────────────┘          └───────┬───────┘
                                                         │
-                  ┌──────────────────────────────────── │ ────────┐
-                  │           Supabase (PostgreSQL)      │         │
-                  │  metadata · auth · fallback logs ◄───┘         │
-                  └──────────────────────────────────────────────  ┘
+                  ┌─────────────────────────────────────┤
+                  │           Supabase (PostgreSQL)      │
+                  │  metadata · auth · fallback logs ◄───┘
+                  └──────────────────────────────────────
                                                         │
                                                         ▼
                                                ┌─────────────────┐
@@ -77,7 +78,71 @@ VaultIQ is composed of four independently deployable services that communicate o
                                                └─────────────────┘
 ```
 
-### End-to-End Request Flow
+---
+
+## End-to-End Project Flow
+
+This diagram shows how all four layers — Frontend, Backend, AI Service, and Big Data — work together for every major user action.
+
+```mermaid
+flowchart TD
+    subgraph Browser["Browser (React 19 SPA)"]
+        UI["User Action<br/>(upload / scan / view analytics)"]
+    end
+
+    subgraph Backend["Backend (Node.js / Express 5 — port 5000)"]
+        Auth["JWT Auth Middleware<br/>HttpOnly cookie"]
+        FileRoute["/api/files<br/>encrypt + store"]
+        AIRoute["/api/ai-detect<br/>forward to AI service"]
+        AnalyticsRoute["/api/analytics<br/>3-tier data read"]
+    end
+
+    subgraph Storage["Cloud Storage"]
+        S3["AWS S3<br/>AES-256 encrypted objects"]
+        DB["Supabase PostgreSQL<br/>file metadata + auth + RLS"]
+    end
+
+    subgraph AIService["AI Service (Python FastAPI — port 8001)"]
+        Extract["Text Extractor<br/>PDF / DOCX / OCR"]
+        Chunk["Chunker<br/>sentence-level"]
+        StatModel["Statistical LR<br/>5 features — 30% weight"]
+        RoBERTa["RoBERTa Classifier<br/>OpenAI detector — 70% weight"]
+        Ensemble["Weighted Ensemble<br/>score + verdict + confidence"]
+    end
+
+    subgraph BigData["Big Data Pipeline"]
+        HDFS["Apache HDFS<br/>event log storage"]
+        Spark["Apache Spark<br/>batch analytics job"]
+        Results["analytics_latest.json<br/>6 analytics categories"]
+    end
+
+    UI -->|"HTTPS + JWT cookie"| Auth
+    Auth --> FileRoute
+    Auth --> AIRoute
+    Auth --> AnalyticsRoute
+
+    FileRoute -->|"PutObject (ciphertext)"| S3
+    FileRoute -->|"INSERT file record"| DB
+
+    AIRoute --> Extract
+    Extract --> Chunk
+    Chunk --> StatModel
+    Chunk --> RoBERTa
+    StatModel --> Ensemble
+    RoBERTa --> Ensemble
+    Ensemble -->|"score, verdict, confidence"| AIRoute
+
+    FileRoute -->|"logEvent (WebHDFS)"| HDFS
+    AIRoute -->|"logEvent (WebHDFS)"| HDFS
+
+    HDFS --> Spark
+    Spark --> Results
+    Results --> AnalyticsRoute
+
+    AnalyticsRoute -->|"normalised payload"| UI
+```
+
+### File Upload — Detailed Sequence
 
 ```mermaid
 sequenceDiagram
@@ -85,19 +150,42 @@ sequenceDiagram
     participant B as Backend (Node.js)
     participant S3 as AWS S3
     participant DB as Supabase DB
-    participant AI as AI Service (Python)
     participant HDFS as Apache HDFS
 
     U->>B: POST /api/files/upload (multipart, JWT cookie)
-    B->>B: Validate JWT · Rate-limit check
-    B->>B: AES-256-CBC encrypt file (random IV)
-    B->>B: SHA-256 hash ciphertext
-    B->>S3: PutObject (encrypted bytes)
-    B->>DB: INSERT file record (key, hash, s3_key, user_id)
-    B->>AI: POST /detect (file bytes)
-    AI-->>B: {score, verdict, confidence}
-    B->>HDFS: logEvent(file_upload, user_id, size, ai_verdict)
-    B-->>U: 201 {file_id, name, size, ai_score, verdict}
+    B->>B: Verify JWT signature and expiry
+    B->>B: AES-256-CBC encrypt file (random 16-byte IV)
+    B->>B: SHA-256 hash of ciphertext
+    B->>S3: PutObject — userId/fileId key
+    S3-->>B: ETag confirmation
+    B->>DB: INSERT file record (s3_key, sha256_hash, mime_type, user_id)
+    DB-->>B: file row id
+    B->>HDFS: logEvent(file_upload, user_id, size, duration_ms)
+    B-->>U: 201 { file_id, name, size, uploaded_at }
+```
+
+### AI Detection — Detailed Sequence
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant B as Backend (Node.js)
+    participant AI as AI Service (FastAPI)
+
+    U->>B: POST /api/ai-detect (multipart files, JWT cookie)
+    B->>B: Verify JWT
+    B->>AI: POST /detect (file bytes via FormData)
+    AI->>AI: Extract text (PDF / DOCX / OCR)
+    AI->>AI: Split into sentence chunks
+    AI->>AI: GPT-2 perplexity + 4 statistical features per chunk
+    AI->>AI: LR model scores each chunk (30% weight)
+    AI->>AI: RoBERTa scores each chunk (70% weight)
+    AI->>AI: Weighted ensemble → per-chunk scores
+    AI->>AI: Mean of chunk scores → document score
+    AI->>AI: Threshold: <0.4 human / 0.4-0.7 mixed / >0.7 AI
+    AI-->>B: { score, verdict, confidence, chunk_scores }
+    B->>HDFS: logEvent(ai_detection, verdict, score, duration_ms)
+    B-->>U: 200 { results, model_warning, processed_at }
 ```
 
 ---
@@ -110,7 +198,7 @@ sequenceDiagram
 |---------|---------|-----|
 | React 19 | UI framework | Virtual DOM diffing, hooks, concurrent mode |
 | React Router 6 | Client-side routing | Declarative nested routes, no page reload |
-| Axios | HTTP client | Interceptors for JWT cookie + error handling |
+| Axios | HTTP client | Interceptors for JWT cookie refresh + error handling |
 | Framer Motion | Animations | Smooth page transitions and micro-interactions |
 | Tailwind CSS | Styling | Utility-first; no CSS naming conflicts |
 | Recharts | Analytics charts | Composable chart components built on D3 |
@@ -142,7 +230,7 @@ sequenceDiagram
 | FastAPI | Async HTTP framework with auto-generated OpenAPI docs |
 | PyTorch | Deep learning inference (RoBERTa, GPT-2) |
 | HuggingFace Transformers | Pre-trained model loading (roberta-base-openai-detector) |
-| Scikit-learn | Logistic Regression training + `joblib` serialisation |
+| Scikit-learn | Logistic Regression training and `joblib` serialisation |
 | pdfplumber | PDF text extraction (layout-aware) |
 | python-docx | DOCX paragraph extraction |
 | Pytesseract | OCR for scanned images and image-based PDFs |
@@ -183,28 +271,29 @@ vaultiq/
 │       ├── pages/                   Route-level components
 │       │   ├── Login.jsx            Sign-in with JWT cookie auth
 │       │   ├── Signup.jsx           Registration + password strength meter
-│       │   ├── Dashboard.jsx        File grid + upload zone
-│       │   ├── FilesPage.jsx        File browser with search + sort
+│       │   ├── Dashboard.jsx        Overview: file count, storage, quick actions
+│       │   ├── FilesPage.jsx        File browser with search, sort, bulk delete
 │       │   ├── Analytics.jsx        Recharts analytics dashboard
-│       │   └── TextAiDetection.jsx  Paste-text AI detection UI
+│       │   └── TextAiDetection.jsx  AI content scanner (upload / vault / history)
 │       ├── components/              Shared UI components
-│       │   ├── AIDetector.jsx       AI score badge + verdict display
+│       │   ├── AIDetector.jsx       AI ensemble result display (score, verdict, chunks)
 │       │   ├── FileCard.jsx         Per-file card (name, size, hash, AI score)
 │       │   ├── HashBadge.jsx        Truncated SHA-256 integrity badge
-│       │   ├── UploadZone.jsx       Drag-and-drop upload dropzone
-│       │   ├── AnalyticsDashboard.jsx  Recharts charts wrapper
-│       │   └── ui/                  Primitive components (Button, Input, …)
-│       ├── services/                Axios API layer (api.js, fileService.js)
+│       │   ├── EmptyState.jsx       Empty vault placeholder component
+│       │   └── ui/                  Primitive components (Button, Input, AppNavbar, BrandPanel)
+│       ├── services/                Axios API layer (api.js, fileService.js, authService.js)
+│       ├── api/                     Domain API helpers (aiDetectApi.js)
 │       ├── hooks/                   useAuth.js, useFiles.js
-│       └── context/                 AuthContext.jsx (JWT state + refresh)
+│       ├── context/                 AuthContext.jsx (JWT state + silent refresh)
+│       └── utils/                   format.js (date/size formatters)
 │
 ├── backend/                         Node.js / Express API
 │   ├── server.js                    App bootstrap, middleware, rate limits
 │   ├── routes/
-│   │   ├── auth.js                  /api/auth (register, login, logout, refresh)
-│   │   ├── files.js                 /api/files (upload, list, download, delete)
-│   │   ├── aiDetection.js           /api/ai-detect (file + text detection)
-│   │   └── analytics.js             /api/analytics (dashboard metrics, refresh)
+│   │   ├── auth.js                  /api/auth (register, login, me, logout, refresh)
+│   │   ├── files.js                 /api/files (upload, list, download, delete, stats)
+│   │   ├── aiDetection.js           /api/ai-detect (file + vault + text detection + history)
+│   │   └── analytics.js             /api/analytics (3-tier read + Spark trigger)
 │   ├── middleware/
 │   │   ├── auth.js                  JWT authenticateToken middleware
 │   │   ├── validate.js              Joi schema validation wrapper
@@ -219,43 +308,32 @@ vaultiq/
 │   │   └── accountLockout.js        5-strike lockout with TTL
 │   ├── validators/                  Joi schemas for auth + file routes
 │   ├── migrations/                  SQL migration files for Supabase
+│   ├── data/                        Local AI detection history store
 │   └── scripts/
 │       ├── migrate.js               Run pending Supabase migrations
 │       ├── migrate_pg.js            Direct PostgreSQL migration runner
 │       └── spark-jobs/              Spark analytics scripts (submitted to cluster)
-│           ├── analytics_job.py
-│           ├── ai_trends.py
-│           ├── storage_stats.py
-│           └── usage_analytics.py
 │
-├── ai-service/                      Python FastAPI microservice
-│   ├── main.py                      App entry, /health + /detect + /detect/text
+├── ai-service/                      Python FastAPI microservice (port 8001)
+│   ├── main.py                      App entry — /health, /detect, /detect/text
 │   ├── detector.py                  Ensemble orchestration (load, score, detect)
-│   ├── extractor.py                 Text extraction (PDF, DOCX, images)
+│   ├── extractor.py                 Text extraction (PDF, DOCX, images via OCR)
 │   ├── preprocessor.py              Sentence chunking + normalisation
 │   ├── statistical.py               5-feature statistical extractor
-│   ├── ensemble.py                  Weighted score combiner
+│   ├── ensemble.py                  Weighted score combiner (0.7 RoBERTa + 0.3 LR)
 │   ├── similarity.py                Cosine/Jaccard/semantic corpus search
-│   ├── similarity_ensemble.py       Similarity score aggregator
 │   ├── train_lr.py                  Train/retrain the Logistic Regression model
-│   ├── models/                      lr_model.pkl, tfidf.pkl (gitignored if large)
-│   ├── datasets/corpus.csv          Reference corpus for similarity detection
-│   └── tests/                       pytest unit tests per module
+│   ├── models/                      lr_model.pkl, tfidf.pkl
+│   └── datasets/corpus.csv          Reference corpus for similarity detection
 │
 ├── bigdata/                         PySpark batch analytics
 │   ├── analytics_job.py             Main Spark job — 6 analytics functions
 │   ├── mapreduce_fallback.py        Pure-Python fallback (no Spark required)
 │   ├── run_analytics.sh             Shell orchestrator (submits to cluster)
-│   ├── results/                     Output JSON (local + HDFS mirror)
-│   └── tests/                       pytest for each analytics function
-│
-├── docs/
-│   ├── api/backend-api.md           Full REST API reference
-│   └── architecture/ai-detection.md AI pipeline technical specification
+│   └── results/                     Output JSON (local + HDFS mirror)
 │
 ├── docker-compose.yml               Full 8-container stack definition
 ├── .env.example                     Environment variable template
-├── hadoop.env                       Hadoop container env overrides
 └── start.sh                         One-command local dev launcher
 ```
 
@@ -269,11 +347,10 @@ VaultIQ's AI content detector combines **deep learning** and **statistical analy
 
 ```mermaid
 flowchart LR
-    PDF[PDF file] -->|pdfplumber| Text
-    DOCX[DOCX file] -->|python-docx| Text
-    IMG[Image / scanned PDF] -->|Tesseract OCR| Text
-    TXT[Plain text] --> Text
-    Text[Raw text string]
+    PDF["PDF file"] -->|"pdfplumber"| Text["Raw text string"]
+    DOCX["DOCX file"] -->|"python-docx"| Text
+    IMG["Image or scanned PDF"] -->|"Tesseract OCR"| Text
+    TXT["Plain text (.txt)"] --> Text
 ```
 
 `extractor.py` routes each file by extension to the correct parser. For images and scanned PDFs, Tesseract converts pixel content to Unicode text before the pipeline continues.
@@ -282,24 +359,24 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Raw[Raw text] --> Clean[Normalise whitespace\nlowercase · strip noise]
-    Clean --> Split[Split into sentence chunks\n≥ 50 chars each]
-    Split --> Chunks[List of text chunks]
+    Raw["Raw text"] --> Clean["Normalise whitespace<br/>lowercase and strip noise"]
+    Clean --> Split["Split into sentence chunks<br/>50 chars minimum each"]
+    Split --> Chunks["List of text chunks"]
 ```
 
 `preprocessor.py` breaks text into sentence-level chunks. Chunking is necessary because transformer models have a 512-token context limit; splitting enables per-chunk scoring and a more granular final distribution.
 
 ### Stage 3 — Statistical Feature Extraction (Component 1)
 
-For each chunk, `detector.py → extract_features()` computes five numerical features:
+For each chunk, `statistical.py → extract_features()` computes five numerical features:
 
 | # | Feature | How it detects AI |
 |---|---------|-------------------|
 | 1 | **Perplexity** | GPT-2 cross-entropy loss over the chunk. LLMs produce low-perplexity (predictable) text that surprises GPT-2 less than human writing. |
-| 2 | **Burstiness** | Variance of sentence lengths ÷ mean length. AI text has unusually uniform sentence lengths; humans vary more. |
-| 3 | **Type-Token Ratio (TTR)** | Unique words ÷ total words. AI over-relies on a narrower, more repetitive vocabulary. |
+| 2 | **Burstiness** | Variance of sentence lengths divided by mean length. AI text has unusually uniform sentence lengths; humans vary more. |
+| 3 | **Type-Token Ratio (TTR)** | Unique words divided by total words. AI over-relies on a narrower, more repetitive vocabulary. |
 | 4 | **Avg Sentence Length** | Mean word count per sentence. AI consistently produces mid-length sentences. |
-| 5 | **Punctuation Density** | Punctuation chars ÷ total chars. AI uses punctuation more formulaically. |
+| 5 | **Punctuation Density** | Punctuation chars divided by total chars. AI uses punctuation more formulaically. |
 
 These five features form a vector passed to the Logistic Regression model.
 
@@ -307,33 +384,33 @@ These five features form a vector passed to the Logistic Regression model.
 
 ```mermaid
 flowchart TD
-    Chunk[Text chunk] --> Tokenise[RoBERTa tokeniser\nmax 512 tokens]
-    Tokenise --> Model[roberta-base-openai-detector\nfine-tuned by OpenAI]
-    Model --> Softmax[Softmax over 2 classes\nReal · Fake]
-    Softmax --> FakeProb[P(AI-generated)\n0.0 – 1.0]
+    Chunk["Text chunk"] --> Tokenise["RoBERTa tokeniser<br/>max 512 tokens"]
+    Tokenise --> Model["roberta-base-openai-detector<br/>fine-tuned by OpenAI on GPT-2 output"]
+    Model --> Softmax["Softmax over 2 classes<br/>Real vs Fake"]
+    Softmax --> FakeProb["P(AI-generated)<br/>range 0.0 to 1.0"]
 ```
 
-`roberta-base-openai-detector` is a RoBERTa model fine-tuned by OpenAI on GPT-2 output. It learns **semantic and syntactic patterns** characteristic of language models — things that aren't captured by statistics alone (e.g., unnaturally coherent transitions, absence of lived experience).
+`roberta-base-openai-detector` is a RoBERTa model fine-tuned by OpenAI on GPT-2 output. It learns **semantic and syntactic patterns** characteristic of language models — things that statistical features miss (e.g., unnaturally coherent transitions, absence of lived experience, overuse of hedging phrases).
 
 ### Stage 5 — Ensemble & Verdict
 
 ```mermaid
 flowchart TD
-    LR[LR Score\nstatistical\n30% weight] --> Ensemble
-    RoBERTa[RoBERTa Score\ndeep learning\n70% weight] --> Ensemble
-    Ensemble[Weighted Average\n0.7 × roberta + 0.3 × lr] --> AvgScore[Per-chunk score]
-    AvgScore --> DocScore[Document score\nmean of all chunks]
-    DocScore --> Thresh{Threshold}
-    Thresh -->|score < 0.4| Human[Human-written]
-    Thresh -->|0.4 – 0.7| Mixed[Mixed / AI-assisted]
-    Thresh -->|score > 0.7| AIGen[AI-generated]
+    LR["LR Score<br/>statistical features<br/>30% weight"] --> Ensemble["Weighted Average<br/>0.7 x RoBERTa + 0.3 x LR"]
+    RoBERTa["RoBERTa Score<br/>deep learning<br/>70% weight"] --> Ensemble
+    Ensemble --> AvgScore["Per-chunk ensemble score"]
+    AvgScore --> DocScore["Document score<br/>mean across all chunks"]
+    DocScore --> Thresh{"Threshold check"}
+    Thresh -->|"score below 0.4"| Human["Human-written"]
+    Thresh -->|"score 0.4 to 0.7"| Mixed["Mixed / AI-assisted"]
+    Thresh -->|"score above 0.7"| AIGen["AI-generated"]
 ```
 
 The **70/30 weighting** reflects that RoBERTa's semantic understanding generalises better than statistical heuristics, but the statistical features add independent signal for edge cases where the transformer is uncertain.
 
 **Confidence is determined by chunk count:**
 - `low` — fewer than 3 chunks (not enough evidence)
-- `medium` — 3–5 chunks
+- `medium` — 3 to 5 chunks
 - `high` — more than 5 chunks
 
 **Similarity detection runs in parallel** using cosine similarity, Jaccard overlap, and a semantic embedding comparison against the reference corpus (`datasets/corpus.csv`), producing a separate `similarity_score` that flags potential plagiarism independently of AI detection.
@@ -354,16 +431,10 @@ Every user action in VaultIQ generates a structured event log that feeds a distr
 
 ```mermaid
 flowchart LR
-    Action[User action\nupload · download · delete · ai_detect]
-    Node[Node.js Backend]
-    HDFSCheck{HDFS\navailable?}
-    HDFS[HDFS DataNode\n/vaultiq/logs/YYYY-MM-DD/]
-    Supa[Supabase\nevent_logs table\nfallback]
-
-    Action --> Node
-    Node --> HDFSCheck
-    HDFSCheck -->|yes| HDFS
-    HDFSCheck -->|no| Supa
+    Action["User action<br/>upload, download, delete, ai_detect"] --> Node["Node.js Backend"]
+    Node --> HDFSCheck{"HDFS<br/>available?"}
+    HDFSCheck -->|"yes"| HDFS["HDFS DataNode<br/>/vaultiq/logs/YYYY-MM-DD/"]
+    HDFSCheck -->|"no"| Supa["Supabase<br/>event_logs table (fallback)"]
 ```
 
 `utils/hdfsLogger.js` writes each event as a JSON file to HDFS via the WebHDFS REST API. The path follows a date-partitioned layout (`/vaultiq/logs/YYYY-MM-DD/`) that Spark reads as a partitioned dataset. If WebHDFS is unreachable, the logger silently falls back to inserting the event into the `event_logs` table in Supabase.
@@ -384,32 +455,48 @@ flowchart LR
 }
 ```
 
+### Analytics — 3-Tier Read Strategy
+
+The backend analytics endpoint tries three sources in order before falling back to an empty payload. This means the dashboard always loads, even when HDFS and Spark are unavailable.
+
+```mermaid
+flowchart TD
+    Request["GET /api/analytics"] --> T1{"Tier 1<br/>HDFS WebHDFS"}
+    T1 -->|"success"| Norm["normalizeForFrontend()<br/>converts raw shape to UI shape"]
+    T1 -->|"unavailable"| T2{"Tier 2<br/>Local JSON cache<br/>bigdata/results/analytics_latest.json"}
+    T2 -->|"success"| Norm
+    T2 -->|"not found"| T3{"Tier 3<br/>Supabase live query<br/>files + event_logs tables"}
+    T3 -->|"success"| Norm
+    T3 -->|"error"| Empty["Empty payload<br/>charts show zeros"]
+    Norm --> Frontend["Analytics.jsx<br/>renders charts"]
+```
+
 ### Spark Batch Analytics
 
 `bigdata/analytics_job.py` is submitted to the Spark cluster (or run locally with `local[*]`). It reads all logs from HDFS, performs six independent aggregations, and writes a single `analytics_latest.json` result file back to HDFS and a local copy to `bigdata/results/`.
 
 ```mermaid
 flowchart TD
-    HDFS[HDFS\n/vaultiq/logs/] --> Spark[SparkSession\nread.json]
-    Spark --> Parse[Parse timestamp → date column]
+    HDFS["HDFS /vaultiq/logs/"] --> Spark["SparkSession read.json"]
+    Spark --> Parse["Parse timestamp to date column"]
 
-    Parse --> J1[daily_activity\nEvents per day by type\n+ bytes per day]
-    Parse --> J2[anomaly_detection\nDelete spikes σ > 2\n+ high-volume users]
-    Parse --> J3[ai_usage_stats\nVerdict distribution\n+ avg score by file type]
-    Parse --> J4[storage_analytics\nTop uploaders\n+ file type distribution]
-    Parse --> J5[latency_analysis\nAvg + p95 latency\n+ busiest hours 0–23]
-    Parse --> J6[user_behaviour\nDAU last 30 days\n+ returning users\n+ event sequences]
+    Parse --> J1["daily_activity<br/>Events per day by type<br/>and bytes per day"]
+    Parse --> J2["anomaly_detection<br/>Delete spikes sigma above 2<br/>and high-volume users"]
+    Parse --> J3["ai_usage_stats<br/>Verdict distribution<br/>and avg score by file type"]
+    Parse --> J4["storage_analytics<br/>Top uploaders<br/>and file type distribution"]
+    Parse --> J5["latency_analysis<br/>Avg and p95 latency<br/>and busiest hours 0 to 23"]
+    Parse --> J6["user_behaviour<br/>DAU last 30 days<br/>returning users<br/>event sequences"]
 
-    J1 --> Results[analytics_latest.json]
+    J1 --> Results["analytics_latest.json"]
     J2 --> Results
     J3 --> Results
     J4 --> Results
     J5 --> Results
     J6 --> Results
 
-    Results --> HDFSOut[HDFS /vaultiq/results/]
-    Results --> LocalOut[bigdata/results/]
-    Results --> API[Backend /api/analytics\nserves to frontend]
+    Results --> HDFSOut["HDFS /vaultiq/results/"]
+    Results --> LocalOut["bigdata/results/"]
+    Results --> API["Backend /api/analytics<br/>serves normalised payload to frontend"]
 ```
 
 **Six analytics produced:**
@@ -417,11 +504,11 @@ flowchart TD
 | Function | What it computes |
 |----------|-----------------|
 | `daily_activity` | Per-day upload/download/AI-detection counts + total bytes |
-| `anomaly_detection` | Delete spikes (mean + 2σ threshold) + users with >50 events/hour |
+| `anomaly_detection` | Delete spikes (mean + 2-sigma threshold) + users with more than 50 events per hour |
 | `ai_usage_stats` | Verdict distribution (human/mixed/ai); avg AI score by file type |
 | `storage_analytics` | Top 10 uploaders by bytes; file-type breakdown by count + size |
 | `latency_analysis` | Average and p95 latency per event type; 24-hour activity heatmap |
-| `user_behaviour` | DAU (last 30 days); returning users (>3 active days); event sequence patterns |
+| `user_behaviour` | DAU (last 30 days); returning users (more than 3 active days); event sequence patterns |
 
 ### MapReduce Fallback
 
@@ -430,10 +517,10 @@ flowchart TD
 ### Docker Cluster (Hadoop + Spark)
 
 ```
-namenode   ← HDFS NameNode + WebHDFS REST (port 9870)
-datanode   ← HDFS DataNode (blocks)
+namenode     ← HDFS NameNode + WebHDFS REST (port 9870)
+datanode     ← HDFS DataNode (stores blocks)
 spark-master ← Spark coordinator (port 8080, 7077)
-spark-worker ← Spark executor (1 core / 1 GB)
+spark-worker ← Spark executor (1 core / 1 GB RAM)
 ```
 
 The `backend/scripts/spark-jobs/` directory is volume-mounted into both Spark containers so jobs can be submitted with `spark-submit /opt/spark-jobs/analytics_job.py`.
@@ -446,12 +533,12 @@ The `backend/scripts/spark-jobs/` directory is volume-mounted into both Spark co
 
 ```mermaid
 flowchart LR
-    Client[User uploads file] --> Backend
-    Backend -->|"1. AES-256-CBC encrypt\n   (random 16-byte IV)"| Cipher[Ciphertext]
-    Cipher -->|"2. SHA-256 hash\n   stored in DB"| Hash[Integrity hash]
-    Cipher -->|"3. PutObject\n   s3://bucket/userId/fileId"| S3[(AWS S3)]
-    S3 -->|"4. GetObject stream"| Dec[Decrypt on download]
-    Dec -->|"5. Verify SHA-256\n   → reject if tampered"| User[User receives file]
+    Client["User uploads file"] --> Backend["Backend (Node.js)"]
+    Backend -->|"1. AES-256-CBC encrypt<br/>random 16-byte IV"| Cipher["Ciphertext"]
+    Cipher -->|"2. SHA-256 hash<br/>stored in Supabase DB"| Hash["Integrity hash"]
+    Cipher -->|"3. PutObject<br/>s3://bucket/userId/fileId"| S3[("AWS S3")]
+    S3 -->|"4. GetObject stream on download"| Dec["Decrypt in backend"]
+    Dec -->|"5. Verify SHA-256<br/>reject if tampered (HTTP 409)"| User["User receives file"]
 ```
 
 - Files are stored under `{userId}/{fileId}` keys — no file from one user can be accessed by another even if S3 permissions were misconfigured, because the backend enforces `user_id` ownership before generating the S3 key.
@@ -470,14 +557,11 @@ erDiagram
     files {
         uuid id PK
         uuid user_id FK
-        text name
-        bigint size_bytes
+        text filename
+        bigint file_size
         text mime_type
         text s3_key
         text sha256_hash
-        float ai_score
-        text ai_verdict
-        text ai_confidence
         timestamptz uploaded_at
     }
     event_logs {
@@ -485,7 +569,7 @@ erDiagram
         uuid user_id FK
         text event_type
         jsonb payload
-        timestamptz created_at
+        timestamptz timestamp
     }
     users ||--o{ files : owns
     users ||--o{ event_logs : generates
@@ -501,26 +585,28 @@ sequenceDiagram
     participant B as Backend
     participant S as Supabase Auth
 
-    U->>B: POST /api/auth/login {email, password}
+    U->>B: POST /api/auth/login { email, password }
     B->>S: signInWithPassword()
-    S-->>B: {access_token, refresh_token, user}
-    B->>B: Set HttpOnly SameSite=Strict cookie\naccess_token (1h) + refresh_token (7d)
-    B-->>U: 200 {user}  (no token in body)
+    S-->>B: { access_token, refresh_token, user }
+    B->>B: Sign JWT (1h access + 7d refresh)
+    B->>B: Set HttpOnly SameSite=Strict cookies
+    B-->>U: 200 { user } — no token in response body
 
     Note over U,B: Subsequent requests
-    U->>B: GET /api/files  (cookie sent automatically)
-    B->>B: Verify JWT signature + expiry
-    B-->>U: 200 {files}
+    U->>B: GET /api/files (cookie sent automatically by browser)
+    B->>B: Verify JWT signature and expiry
+    B-->>U: 200 { files }
 
-    Note over U,B: Token refresh
-    U->>B: POST /api/auth/refresh
-    B->>S: refreshSession(refresh_token)
-    S-->>B: new access_token + refresh_token
-    B->>B: Rotate cookies
-    B-->>U: 200 OK
+    Note over U,B: Silent token refresh (interceptor in api.js)
+    U->>B: Any request — 401 received
+    B-->>U: 401 Unauthorized
+    U->>B: POST /api/auth/refresh (refresh cookie)
+    B->>B: Verify refresh token, issue new pair
+    B->>B: Rotate both cookies
+    B-->>U: 200 OK — original request retried automatically
 ```
 
-Tokens are never exposed to JavaScript — `HttpOnly` prevents `document.cookie` access. `SameSite=Strict` blocks all cross-origin cookie transmission, eliminating CSRF without CSRF tokens.
+Tokens are never exposed to JavaScript — `HttpOnly` prevents `document.cookie` access. `SameSite=Strict` blocks all cross-origin cookie transmission, eliminating CSRF without CSRF tokens. On access token expiry, `api.js` queues concurrent requests and silently refreshes once, then replays all queued requests.
 
 ### Docker Compose — Full Stack
 
@@ -529,12 +615,12 @@ Running `docker compose up -d` starts all 8 containers in dependency order:
 ```
 postgres (db)
 redis
-ai-service     ─→  depends on: (none)
-backend        ─→  depends on: db, redis, ai-service
-namenode       ─→  formats HDFS on first boot
-datanode       ─→  depends on: namenode (healthy)
+ai-service     → depends on: (none)
+backend        → depends on: db, redis, ai-service
+namenode       → formats HDFS on first boot
+datanode       → depends on: namenode (healthy)
 spark-master
-spark-worker   ─→  depends on: spark-master
+spark-worker   → depends on: spark-master
 ```
 
 The `frontend` is served separately during development (`npm start`). In production, an Nginx container serves the built React app and proxies `/api` to the backend.
@@ -548,11 +634,11 @@ The `frontend` is served separately during development (`npm start`). In product
 | Transport | HTTPS / TLS (production) | Prevents eavesdropping |
 | Auth | JWT in HttpOnly cookies | XSS cannot steal tokens |
 | CSRF | SameSite=Strict + CORS whitelist | No CSRF tokens needed |
-| File encryption | AES-256-CBC + random IV | Encrypted at rest in S3 |
-| Integrity | SHA-256 hash verified on download | Detects tampering in S3 |
-| RLS | Supabase row-level security | Queries scoped to `user_id` |
-| Brute force | 5 strikes → 15-min lockout + email | Account takeover prevention |
-| Rate limiting | Global (1000/15m), auth (10/15m), upload (100/hr), files (60/min) | DoS and abuse prevention |
+| File encryption | AES-256-CBC + random IV per file | Encrypted at rest in S3 |
+| Integrity | SHA-256 hash verified on every download | Detects S3 tampering (HTTP 409) |
+| RLS | Supabase row-level security | All queries auto-scoped to `user_id` |
+| Brute force | 5 strikes → 15-min lockout + email alert | Account takeover prevention |
+| Rate limiting | Global 1000/15m, auth 10/15m, upload 100/hr, files 60/min | DoS and abuse prevention |
 | Input validation | Joi schemas on all routes | Rejects malformed requests early |
 | Headers | Helmet (CSP, HSTS, X-Frame-Options, noSniff) | Browser-level protections |
 
@@ -565,7 +651,7 @@ The `frontend` is served separately during development (`npm start`). In product
 - **Node.js** v18+
 - **Python** 3.11+
 - **Docker** (for Hadoop/Spark/Postgres containers)
-- System packages: `brew install tesseract poppler ffmpeg` (macOS) or `apt-get install tesseract-ocr poppler-utils ffmpeg`
+- System packages: `brew install tesseract poppler` (macOS) or `apt-get install tesseract-ocr poppler-utils`
 
 ### 1. Clone & Install
 
@@ -588,20 +674,24 @@ pip install -r ai-service/requirements.txt
 
 ```bash
 cp backend/.env.example backend/.env
-cp ai-service/.env.example ai-service/.env
+# Edit backend/.env with your values
 ```
 
 **`backend/.env` — required variables:**
 
 ```env
-# Security (generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+# Server
+PORT=5000
+NODE_ENV=development
+
+# Security — generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 JWT_SECRET=<64-char-hex>
 ENCRYPTION_KEY=<64-char-hex>
 
 # Supabase
 SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_ANON_KEY=eyJ...
-SUPABASE_SERVICE_KEY=eyJ...
+SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_KEY=<service-role-key>
 
 # AWS S3
 AWS_ACCESS_KEY_ID=AKIA...
@@ -609,12 +699,10 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
 S3_BUCKET_NAME=vaultiq-files
 
-# Service config
-PORT=5000
-NODE_ENV=development
+# Services
 AI_SERVICE_URL=http://localhost:8001
 HDFS_WEBHDFS_URL=http://localhost:9870/webhdfs/v1
-HDFS_ENABLED=false          # set true when Hadoop is running
+HDFS_ENABLED=false        # set true when Hadoop is running
 ```
 
 ### 3. Database Migrations
@@ -634,7 +722,7 @@ backend/migrations/create_event_logs.sql
 ./start.sh
 ```
 
-Or start individually:
+Or start individually in separate terminals:
 
 ```bash
 # Terminal 1 — Frontend
@@ -673,56 +761,77 @@ docker compose up -d
 ### Health
 
 ```
-GET  /api/health              Backend uptime + memory
-GET  http://localhost:8001/health    AI service + model status
+GET  /api/health                      Backend uptime + memory usage
+GET  http://localhost:8001/health     AI service + model load status
 ```
 
 ### Auth
 
 ```
-POST /api/auth/register       { email, password, fullName }
-POST /api/auth/login          { email, password }
+POST /api/auth/register               { email, password, fullName }
+POST /api/auth/login                  { email, password }
 POST /api/auth/logout
-POST /api/auth/refresh
-GET  /api/auth/me             (requires auth)
+POST /api/auth/refresh                Rotate access + refresh tokens
+GET  /api/auth/me                     Returns { id, email, fullName }  (requires auth)
 ```
 
 ### Files
 
 ```
-POST /api/files/upload        multipart/form-data, file field
-GET  /api/files               list user files
-GET  /api/files/:id/download  stream decrypted file
-DELETE /api/files/:id
+POST   /api/files/upload              multipart/form-data  (requires auth)
+GET    /api/files                     Paginated file list  (requires auth)
+GET    /api/files/stats               { totalFiles, storageBytes }  (requires auth)
+GET    /api/files/:id/download        Stream decrypted file  (requires auth)
+DELETE /api/files/:id                 Delete single file  (requires auth)
+DELETE /api/files/bulk                { fileIds: [...] } — up to 50  (requires auth)
 ```
 
 ### AI Detection
 
 ```
-POST /api/ai-detect           multipart, file field
-POST /api/ai-detect-text      { text: "..." }
+POST /api/ai-detect                   multipart, files field — up to 5 files  (requires auth)
+POST /api/ai-detect/from-vault        { fileIds: [...] } — detect vault files  (requires auth)
+POST /api/ai-detect/check             { text: "..." } — raw text detection  (requires auth)
+GET  /api/ai-detect/history           User's past detection results  (requires auth)
 ```
 
-**Response:**
+**Detection response:**
 ```json
 {
-  "data": {
-    "score": 0.78,
-    "verdict": "ai_generated",
-    "confidence": "high",
-    "chunk_scores": [0.82, 0.75, 0.76],
-    "similarity_score": 0.012,
-    "similarity_verdict": "low",
-    "warning": null
-  }
+  "results": [
+    {
+      "filename": "report.pdf",
+      "score": 0.78,
+      "verdict": "ai_generated",
+      "confidence": "high",
+      "chunk_scores": [0.82, 0.75, 0.76],
+      "similarity_score": 0.012,
+      "similarity_verdict": "low",
+      "warning": null
+    }
+  ],
+  "model_warning": null,
+  "processed_at": "2026-04-14T10:23:00Z"
 }
 ```
 
 ### Analytics
 
 ```
-GET  /api/analytics           latest analytics (from HDFS results or DB)
-POST /api/analytics/refresh   trigger Spark batch job
+GET  /api/analytics                   Latest analytics (HDFS → local cache → Supabase live)
+POST /api/analytics/trigger           Spawn Spark batch job in background
+```
+
+**Analytics response shape:**
+```json
+{
+  "_source": "hdfs | cache | live | empty",
+  "platform_totals": { "total_events": 0, "active_users": 0, "total_bytes_uploaded": 0 },
+  "daily_trend":     [{ "date": "YYYY-MM-DD", "uploads": 0, "downloads": 0 }],
+  "event_breakdown": [{ "event": "Uploads", "count": 0 }],
+  "hourly_pattern":  [{ "hour": 0, "events": 0 }],
+  "anomalies":       [{ "user_id": "...", "off_hours_events": 0, "date": "..." }]
+}
 ```
 
 ---
@@ -741,12 +850,20 @@ POST /api/analytics/refresh   trigger Spark batch job
 - Verify `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and that the IAM role has `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on the bucket.
 
 **"HDFS connection refused"**
-- Set `HDFS_ENABLED=false` in `.env` to use Supabase fallback logging.
+- Set `HDFS_ENABLED=false` in `.env` to use Supabase fallback logging (no Hadoop required).
 - Or start the HDFS containers: `docker compose up namenode datanode -d` and wait for the NameNode healthcheck to pass.
+
+**"File integrity check failed" (HTTP 409)**
+- The file was modified or corrupted in S3 after upload. The SHA-256 stored in Supabase no longer matches the ciphertext. Delete the file and re-upload.
 
 **App shows blank page**
 - Check browser console for errors.
-- Confirm backend is running on port 5000 (`curl http://localhost:5000/api/health`).
+- Confirm backend is running: `curl http://localhost:5000/api/health`
+- Confirm `frontend/.env` has `REACT_APP_API_URL=http://localhost:5000`.
+
+**AI Detection returns "AI Service is unavailable"**
+- Start the AI service: `uvicorn main:app --host 0.0.0.0 --port 8001`
+- Check `AI_SERVICE_URL=http://localhost:8001` is set in `backend/.env`.
 
 ---
 
