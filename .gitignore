@@ -53,6 +53,9 @@ ai-service/datasets/
 ai-service/models/*.pkl
 ai-service/models/*.joblib
 
+# Git worktrees (isolated development workspaces)
+.worktrees/
+
 # Temporary session documentation (generated during debugging)
 DIAGNOSE_*.md
 AUTH_FIX*.md
