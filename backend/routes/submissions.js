@@ -6,6 +6,7 @@
  */
 
 const express = require("express");
+const multer = require("multer");
 const { v4: uuidv4 } = require("uuid");
 const { supabaseAdmin } = require("../utils/supabase");
 const { callAIDetection, uploadToS3 } = require("../utils/collectionHelpers");
@@ -15,6 +16,7 @@ const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
 
 const router = express.Router();
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 /**
  * GET /api/collections/:collectionId/submissions
@@ -22,7 +24,7 @@ const s3Client = new S3Client({ region: process.env.AWS_REGION });
  * Used for teacher dashboard polling
  * Auth: Required (must be collection owner)
  */
-router.get("/:collectionId/submissions", authenticateToken, async (req, res) => {
+router.get("/collections/:collectionId/submissions", authenticateToken, async (req, res) => {
   try {
     const { collectionId } = req.params;
     const userId = req.user.id;
@@ -106,7 +108,7 @@ router.get("/:collectionId/submissions", authenticateToken, async (req, res) => 
  * Body: { submissionIds?: string[] } — if empty, detect all pending
  * Auth: Required (must be collection owner)
  */
-router.post("/:collectionId/detect", authenticateToken, async (req, res) => {
+router.post("/collections/:collectionId/detect", authenticateToken, async (req, res) => {
   try {
     const { collectionId } = req.params;
     const { submissionIds } = req.body;
@@ -228,7 +230,7 @@ async function processDetectionsAsync(results, collectionId) {
  * Auth: None (public endpoint)
  * Uses multer to handle file uploads
  */
-router.post("/share/:shareCode/submit", async (req, res) => {
+router.post("/share/:shareCode/submit", upload.array("files", 5), async (req, res) => {
   try {
     const { shareCode } = req.params;
     const { student_name, student_id, student_notes } = req.body;
