@@ -7,6 +7,10 @@ import Dashboard      from './pages/Dashboard';
 import FilesPage      from './pages/FilesPage';
 import Analytics      from './pages/Analytics';
 import TextAiDetection from './pages/TextAiDetection';
+import CollectionsPage from './pages/CollectionsPage';
+import CreateCollectionPage from './pages/CreateCollectionPage';
+import CollectionDetailsPage from './pages/CollectionDetailsPage';
+import StudentSubmissionPage from './pages/StudentSubmissionPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -38,6 +42,14 @@ function App() {
           <Route path="/analytics"    element={<Analytics />} />
           <Route path="/ai-detection" element={<TextAiDetection />} />
         </Route>
+
+        {/* Collection Routes */}
+        <Route path="/collections" element={<ProtectedRoute><CollectionsPage /></ProtectedRoute>} />
+        <Route path="/collections/new" element={<ProtectedRoute><CreateCollectionPage /></ProtectedRoute>} />
+        <Route path="/collections/:id" element={<ProtectedRoute><CollectionDetailsPage /></ProtectedRoute>} />
+
+        {/* Public Student Submission */}
+        <Route path="/submit/:shareCode" element={<StudentSubmissionPage />} />
 
         {/* Default — ProtectedRoute handles the auth check and redirects */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -184,6 +184,13 @@ describe('POST /api/auth/login', () => {
 
 // ─── GET /api/auth/me ─────────────────────────────────────────────────────────
 describe('GET /api/auth/me', () => {
+  beforeEach(() => {
+    supabaseAdmin.auth.admin.getUserById.mockResolvedValue({
+      data: { user: { user_metadata: { full_name: 'Test User' } } },
+      error: null
+    });
+  });
+
   test('200 with valid access token cookie', async () => {
     const res = await request(app)
       .get('/api/auth/me')
