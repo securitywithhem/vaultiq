@@ -36,7 +36,8 @@ async function processDetectionsAsync(results, collectionId) {
 
       // Fetch file from S3
       const fileResponse = await fetch(signedUrl);
-      const fileBuffer = await fileResponse.buffer();
+      const arrayBuffer = await fileResponse.arrayBuffer();
+      const fileBuffer = Buffer.from(arrayBuffer);
 
       // Call FastAPI
       const detection = await callAIDetection(fileBuffer, result.filename);
