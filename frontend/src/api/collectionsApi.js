@@ -1,5 +1,3 @@
-// frontend/src/api/collectionsApi.js
-
 export async function createCollection(data) {
   const response = await fetch('/api/collections', {
     method: 'POST',
