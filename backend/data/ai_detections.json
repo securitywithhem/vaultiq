@@ -1,0 +1,12 @@
+{
+  "detections": [
+    {
+      "timestamp": "2026-04-16T06:42:58.543Z",
+      "user_id": "62eee739-ac47-454b-89ab-4d6ab96cb901",
+      "filename": "EduVault.docx",
+      "verdict": "mixed",
+      "score": 0.5,
+      "confidence": "medium"
+    }
+  ]
+}

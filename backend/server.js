@@ -118,7 +118,7 @@ app.use('/api/files', applyRateLimit(fileLimiter), filesRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai-detect', applyRateLimit(uploadLimiter), aiDetectionRoutes);
 app.use('/api/collections', collectionsRouter);
-app.use('/api', submissionsRouter); // For /api/share/:code and /api/collections/:id/submissions
+app.use('/api/share', submissionsRouter); // For /api/share/:code endpoints
 
 // ─── System Endpoints ───────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
