@@ -26,7 +26,12 @@ export default function CreateCollectionPage() {
     setError('');
 
     try {
-      const result = await createCollection(formData);
+      // Convert datetime-local to ISO format if deadline is set
+      const dataToSend = { ...formData };
+      if (formData.expires_at) {
+        dataToSend.expires_at = new Date(formData.expires_at).toISOString();
+      }
+      const result = await createCollection(dataToSend);
       setSuccess(result);
     } catch (err) {
       setError(err.message);
