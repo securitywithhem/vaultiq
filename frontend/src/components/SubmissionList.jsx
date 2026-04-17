@@ -8,7 +8,14 @@ export default function SubmissionList({ submissions, onRunDetection }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const filtered = submissions
-    .filter((s) => s.student_name.toLowerCase().includes(search.toLowerCase()))
+    .filter((s) => {
+      const q = search.toLowerCase();
+      return (
+        s.student_name.toLowerCase().includes(q) ||
+        (s.student_email || '').toLowerCase().includes(q) ||
+        (s.student_id || '').toLowerCase().includes(q)
+      );
+    })
     .filter((s) => {
       if (filterVerdict === 'all') return true;
       const hasVerdict = s.files.some((f) => f.verdict === filterVerdict);
@@ -60,7 +67,8 @@ export default function SubmissionList({ submissions, onRunDetection }) {
         <table className="w-full text-sm">
           <thead className="border-b border-gray-800">
             <tr className="text-xs text-gray-600 uppercase tracking-widest">
-              <th className="text-left py-3 px-4">Student Name</th>
+              <th className="text-left py-3 px-4">Student</th>
+              <th className="text-left py-3 px-4">Email</th>
               <th className="text-center py-3 px-4">Files</th>
               <th className="text-center py-3 px-4">AI Score</th>
               <th className="text-center py-3 px-4">Status</th>
@@ -72,44 +80,102 @@ export default function SubmissionList({ submissions, onRunDetection }) {
             {filtered.map((sub) => {
               const maxScore = Math.max(...sub.files.map((f) => f.ai_score || 0));
               const verdict = sub.files.find((f) => f.verdict === 'ai') ? 'ai' : sub.files.find((f) => f.verdict === 'mixed') ? 'mixed' : 'human';
+              const isOpen = expandedId === sub.id;
+              const customEntries = Object.entries(sub.custom_fields || {});
 
               return (
-                <motion.tr
-                  key={sub.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="hover:bg-gray-900/50 cursor-pointer"
-                  onClick={() => setExpandedId(expandedId === sub.id ? null : sub.id)}
-                >
-                  <td className="py-3 px-4 text-white font-semibold">{sub.student_name}</td>
-                  <td className="py-3 px-4 text-center text-gray-400">{sub.files.length}</td>
-                  <td className="py-3 px-4 text-center font-mono text-orange-400">{Math.round(maxScore * 100)}%</td>
-                  <td className="py-3 px-4 text-center">
-                    {sub.files.some((f) => f.detection_status === 'processing') && (
-                      <span className="text-xs text-blue-400">Processing</span>
-                    )}
-                    {sub.files.every((f) => f.detection_status === 'completed') && (
-                      <span className="text-xs text-green-400">Completed</span>
-                    )}
-                    {sub.files.some((f) => f.detection_status === 'pending') && (
-                      <span className="text-xs text-gray-500">Pending</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <VerdictBadge verdict={verdict} />
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRunDetection(sub.id);
-                      }}
-                      className="text-xs text-violet-400 hover:text-violet-300"
-                    >
-                      Detect
-                    </button>
-                  </td>
-                </motion.tr>
+                <React.Fragment key={sub.id}>
+                  <motion.tr
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="hover:bg-gray-900/50 cursor-pointer"
+                    onClick={() => setExpandedId(isOpen ? null : sub.id)}
+                  >
+                    <td className="py-3 px-4 text-white font-semibold">
+                      <div>{sub.student_name}</div>
+                      {sub.student_id && sub.student_id !== 'N/A' && (
+                        <div className="text-xs text-gray-500 font-normal">{sub.student_id}</div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-gray-400 text-xs">{sub.student_email || '—'}</td>
+                    <td className="py-3 px-4 text-center text-gray-400">{sub.files.length}</td>
+                    <td className="py-3 px-4 text-center font-mono text-orange-400">{Math.round(maxScore * 100)}%</td>
+                    <td className="py-3 px-4 text-center">
+                      {sub.files.some((f) => f.detection_status === 'processing') && (
+                        <span className="text-xs text-blue-400">Processing</span>
+                      )}
+                      {sub.files.every((f) => f.detection_status === 'completed') && (
+                        <span className="text-xs text-green-400">Completed</span>
+                      )}
+                      {sub.files.some((f) => f.detection_status === 'pending') && (
+                        <span className="text-xs text-gray-500">Pending</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <VerdictBadge verdict={verdict} />
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRunDetection(sub.id);
+                        }}
+                        className="text-xs text-violet-400 hover:text-violet-300"
+                      >
+                        Detect
+                      </button>
+                    </td>
+                  </motion.tr>
+                  {isOpen && (
+                    <tr className="bg-gray-950/60">
+                      <td colSpan={7} className="py-4 px-6 text-xs text-gray-400">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">Files</p>
+                            <ul className="space-y-1">
+                              {sub.files.map((f, i) => (
+                                <li key={i} className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-3 py-2">
+                                  <span className="truncate text-gray-300">{f.filename}</span>
+                                  {f.download_url ? (
+                                    <a
+                                      href={f.download_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-violet-400 hover:text-violet-300 font-bold"
+                                    >
+                                      Download
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-600">—</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">Responses</p>
+                            {sub.student_notes && (
+                              <div className="mb-2">
+                                <span className="text-gray-500">Notes: </span>
+                                <span className="text-gray-300 whitespace-pre-wrap">{sub.student_notes}</span>
+                              </div>
+                            )}
+                            {customEntries.length === 0 && !sub.student_notes && (
+                              <p className="text-gray-600 italic">No additional responses.</p>
+                            )}
+                            {customEntries.map(([k, v]) => (
+                              <div key={k} className="mb-1">
+                                <span className="text-gray-500">{k}: </span>
+                                <span className="text-gray-300">{String(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

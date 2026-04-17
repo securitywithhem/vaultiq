@@ -10,64 +10,110 @@ const axios = require("axios");
 
 const router = express.Router();
 
-// Configure multer for file uploads
+// Configure multer with explicit error handling
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+  limits: { fileSize: 100 * 1024 * 1024 }, // hard cap 100MB; per-collection limit applied later
 });
+
+const handleUpload = (req, res, next) => {
+  upload.array("files", 10)(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ error: `Upload error: ${err.message}` });
+    }
+    if (err) {
+      return res.status(400).json({ error: err.message || "File upload failed" });
+    }
+    next();
+  });
+};
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * POST /api/share/:shareCode/submit
  * Student submits files to a collection
  * Auth: None (public endpoint)
- * Uses multer to handle file uploads
  */
-router.post("/:shareCode/submit", upload.array("files"), async (req, res) => {
+router.post("/:shareCode/submit", handleUpload, async (req, res) => {
   try {
     const { shareCode } = req.params;
-    const { student_name, student_id, student_notes } = req.body;
-    const files = req.files || []; // From multer middleware
+    const {
+      student_name,
+      student_id,
+      student_email,
+      student_notes,
+      custom_fields,
+    } = req.body;
+    const files = req.files || [];
 
     console.log('📤 POST /share/:shareCode/submit received');
     console.log('   Share code:', shareCode);
     console.log('   Student name:', student_name);
-    console.log('   Student ID:', student_id);
+    console.log('   Student email:', student_email);
     console.log('   Files count:', files.length);
 
     if (!student_name || student_name.trim() === "") {
-      console.warn('⚠️  Missing student name');
       return res.status(400).json({ error: "Student name is required" });
     }
-
+    if (!student_email || !emailRegex.test(student_email.trim())) {
+      return res.status(400).json({ error: "A valid email address is required" });
+    }
     if (files.length === 0) {
-      console.warn('⚠️  No files provided');
       return res.status(400).json({ error: "At least one file is required" });
     }
 
-    // Find collection by share code
-    console.log('🔍 Querying collection by share code:', shareCode);
+    // Find collection
     const { data: collection, error: collError } = await supabase
       .from("collections")
-      .select("id, auto_detect_enabled, expires_at")
+      .select("id, auto_detect_enabled, expires_at, fields, max_file_size_mb, allowed_types")
       .eq("unique_share_code", shareCode)
       .eq("status", "active")
       .single();
 
-    if (collError) {
-      console.error('❌ Collection query error:', collError);
+    if (collError || !collection) {
       return res.status(404).json({ error: "Collection not found or expired" });
     }
 
-    if (!collection) {
-      console.error('❌ Collection not found for share code:', shareCode);
-      return res.status(404).json({ error: "Collection not found or expired" });
-    }
-
-    console.log('✅ Collection found:', collection.id);
-
-    // Check deadline
+    // Deadline check
     if (collection.expires_at && new Date(collection.expires_at) < new Date()) {
       return res.status(410).json({ error: "Collection submission deadline has passed" });
+    }
+
+    // File size + type validation
+    const maxBytes = (collection.max_file_size_mb || 25) * 1024 * 1024;
+    const allowedTypes = (collection.allowed_types || ["pdf", "docx", "txt"]).map((t) => t.toLowerCase());
+    for (const file of files) {
+      if (file.size > maxBytes) {
+        return res.status(413).json({
+          error: `File "${file.originalname}" exceeds ${collection.max_file_size_mb}MB limit`,
+        });
+      }
+      const ext = (file.originalname.split(".").pop() || "").toLowerCase();
+      if (!allowedTypes.includes(ext)) {
+        return res.status(415).json({
+          error: `File type ".${ext}" is not allowed. Allowed: ${allowedTypes.join(", ")}`,
+        });
+      }
+    }
+
+    // Parse and validate custom fields
+    let parsedCustom = {};
+    if (custom_fields) {
+      try {
+        parsedCustom = typeof custom_fields === "string" ? JSON.parse(custom_fields) : custom_fields;
+      } catch {
+        return res.status(400).json({ error: "Invalid custom_fields payload" });
+      }
+    }
+    const definedFields = Array.isArray(collection.fields) ? collection.fields : [];
+    for (const f of definedFields) {
+      if (f.required) {
+        const val = parsedCustom[f.id];
+        if (val === undefined || val === null || String(val).trim() === "") {
+          return res.status(400).json({ error: `Field "${f.label}" is required` });
+        }
+      }
     }
 
     const submissionId = uuidv4();
@@ -90,9 +136,11 @@ router.post("/:shareCode/submit", upload.array("files"), async (req, res) => {
       .insert([
         {
           collection_id: collection.id,
-          student_name,
-          student_id: student_id || null,
+          student_name: student_name.trim(),
+          student_id: student_id ? student_id.trim() : null,
+          student_email: student_email.trim(),
           student_notes: student_notes || null,
+          custom_fields: parsedCustom,
           s3_folder_path: `collections/${collection.id}/${submissionId}`,
         },
       ])
@@ -160,7 +208,7 @@ router.get("/:shareCode", async (req, res) => {
 
     const { data, error } = await supabase
       .from("collections")
-      .select("id, name, status")
+      .select("id, name, description, status, fields, max_file_size_mb, allowed_types, expires_at")
       .eq("unique_share_code", shareCode)
       .single();
 
@@ -183,10 +231,20 @@ router.get("/:shareCode", async (req, res) => {
       return res.status(410).json({ error: "Collection is no longer accepting submissions" });
     }
 
+    const deadlinePassed = data.expires_at && new Date(data.expires_at) < new Date();
+    if (deadlinePassed) {
+      return res.status(410).json({ error: "Collection submission deadline has passed" });
+    }
+
     const responseData = {
       id: data.id,
       name: data.name,
+      description: data.description || "",
       valid: true,
+      fields: data.fields || [],
+      maxFileSizeMb: data.max_file_size_mb || 25,
+      allowedTypes: data.allowed_types || ["pdf", "docx", "txt"],
+      deadline: data.expires_at || null,
     };
     console.log('📤 Sending collection info:', responseData);
     res.json(responseData);

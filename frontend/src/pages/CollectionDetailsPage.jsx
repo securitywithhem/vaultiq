@@ -68,8 +68,11 @@ export default function CollectionDetailsPage() {
           <h1 className="text-4xl font-bold text-white mb-2">{collection.name}</h1>
           <p className="text-gray-400 mb-4">{collection.description}</p>
           <div className="flex gap-4">
-            <span className="text-sm text-gray-500">Auto-detect: {collection.auto_detect_enabled ? '✓ ON' : '✗ OFF'}</span>
+            <span className="text-sm text-gray-500">Auto-detect: {collection.autoDetectEnabled ? 'ON' : 'OFF'}</span>
             <span className="text-sm text-gray-500">Status: {collection.status}</span>
+            {collection.expiresAt && (
+              <span className="text-sm text-gray-500">Deadline: {new Date(collection.expiresAt).toLocaleString()}</span>
+            )}
           </div>
         </div>
 
