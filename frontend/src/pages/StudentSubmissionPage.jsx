@@ -46,7 +46,6 @@ export default function StudentSubmissionPage() {
         return;
       }
       toast.success('✓ Submission received! Teacher will review it shortly.');
-      await onSubmit(formData);
     } catch (err) {
       const errorMsg = err.message || 'Network error. Please try again.';
       toast.error(errorMsg);
