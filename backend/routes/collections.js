@@ -1,9 +1,12 @@
 const express = require("express");
-const { v4: uuidv4 } = require("uuid");
 const { generateShareCode } = require("../utils/collectionHelpers");
 const { createClient } = require("@supabase/supabase-js");
 const { processDetectionsAsync } = require("../utils/detectionHelper");
 const { authenticateToken } = require("../middleware/auth");
+const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 const router = express.Router();
 
@@ -34,48 +37,97 @@ router.post("/", requireAuth, async (req, res) => {
     console.log('👤 User ID:', req.user?.id);
     console.log('📝 Request body:', req.body);
 
-    const { name, description, auto_detect_enabled, expires_at } = req.body;
+    const {
+      name,
+      description,
+      auto_detect_enabled,
+      expires_at,
+      fields,
+      max_file_size_mb,
+      allowed_types,
+    } = req.body;
     const userId = req.user.id;
+
+    if (!userId) {
+      console.error("❌ No user ID found in request");
+      return res.status(401).json({ error: "User not authenticated" });
+    }
 
     if (!name || name.trim() === "") {
       return res.status(400).json({ error: "Collection name is required" });
     }
 
+    // Normalise optional structured inputs
+    const normalisedFields = Array.isArray(fields)
+      ? fields
+          .filter((f) => f && typeof f.label === "string" && f.label.trim())
+          .map((f, i) => ({
+            id: f.id || `field_${i}_${Date.now()}`,
+            label: f.label.trim(),
+            type: ["text", "email", "number", "textarea", "select"].includes(f.type) ? f.type : "text",
+            required: Boolean(f.required),
+            options: Array.isArray(f.options) ? f.options.filter((o) => typeof o === "string") : [],
+          }))
+      : [];
+
+    const sizeMb = Number.isFinite(Number(max_file_size_mb)) ? Math.min(Math.max(Number(max_file_size_mb), 1), 100) : 25;
+    const normalisedTypes = Array.isArray(allowed_types) && allowed_types.length
+      ? allowed_types.map((t) => String(t).toLowerCase().replace(/^\./, ""))
+      : ["pdf", "docx", "txt"];
+
     const shareCode = generateShareCode();
+    console.log('🔑 Generated share code:', shareCode);
+
+    const insertData = {
+      user_id: userId,
+      name,
+      description: description || null,
+      auto_detect_enabled: auto_detect_enabled !== false,
+      expires_at: expires_at || null,
+      unique_share_code: shareCode,
+      status: "active",
+      fields: normalisedFields,
+      max_file_size_mb: sizeMb,
+      allowed_types: normalisedTypes,
+    };
+    console.log('📋 Insert data:', JSON.stringify(insertData, null, 2));
 
     const { data, error } = await supabase
       .from("collections")
-      .insert([
-        {
-          user_id: userId,
-          name,
-          description: description || null,
-          auto_detect_enabled: auto_detect_enabled !== false,
-          expires_at: expires_at || null,
-          unique_share_code: shareCode,
-          status: "active",
-        },
-      ])
+      .insert([insertData])
       .select()
       .single();
 
     if (error) {
       console.error("❌ Supabase insert error:", error);
+      console.error("   Error code:", error.code);
+      console.error("   Error message:", error.message);
+      console.error("   Error details:", error);
       return res.status(500).json({ error: "Failed to create collection: " + error.message });
     }
 
-    console.log(`✅ Collection created: ${data.id}`, data);
-    res.status(201).json({
+    console.log(`✅ Collection created with ID: ${data.id}`);
+    console.log('   Share code in response:', data.unique_share_code);
+    console.log('   Full response data:', JSON.stringify(data, null, 2));
+
+    const responseData = {
       data: {
         id: data.id,
         name: data.name,
         shareCode: data.unique_share_code,
         autoDetectEnabled: data.auto_detect_enabled,
+        fields: data.fields || [],
+        maxFileSizeMb: data.max_file_size_mb,
+        allowedTypes: data.allowed_types || [],
+        expiresAt: data.expires_at,
         createdAt: data.created_at,
       },
-    });
+    };
+    console.log('📤 Sending response:', JSON.stringify(responseData, null, 2));
+    res.status(201).json(responseData);
   } catch (error) {
-    console.error("POST /collections error:", error);
+    console.error("❌ POST /collections error:", error);
+    console.error("   Stack:", error.stack);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -99,6 +151,18 @@ router.get("/", requireAuth, async (req, res) => {
       return res.status(500).json({ error: "Failed to fetch collections" });
     }
 
+    const collectionIds = data.map((c) => c.id);
+    const counts = {};
+    if (collectionIds.length) {
+      const { data: subs } = await supabase
+        .from("submissions")
+        .select("collection_id")
+        .in("collection_id", collectionIds);
+      (subs || []).forEach((s) => {
+        counts[s.collection_id] = (counts[s.collection_id] || 0) + 1;
+      });
+    }
+
     res.json({
       data: {
         collections: data.map((c) => ({
@@ -109,6 +173,10 @@ router.get("/", requireAuth, async (req, res) => {
           status: c.status,
           createdAt: c.created_at,
           expiresAt: c.expires_at,
+          shareCode: c.unique_share_code,
+          submissionCount: counts[c.id] || 0,
+          maxFileSizeMb: c.max_file_size_mb,
+          allowedTypes: c.allowed_types || [],
         })),
       },
     });
@@ -148,6 +216,9 @@ router.get("/:id", requireAuth, async (req, res) => {
         shareCode: data.unique_share_code,
         createdAt: data.created_at,
         expiresAt: data.expires_at,
+        fields: data.fields || [],
+        maxFileSizeMb: data.max_file_size_mb,
+        allowedTypes: data.allowed_types || [],
       },
     });
   } catch (error) {
@@ -254,10 +325,14 @@ router.get("/:collectionId/submissions", requireAuth, async (req, res) => {
         id,
         student_name,
         student_id,
+        student_email,
+        student_notes,
+        custom_fields,
         submitted_at,
         updated_at,
         ai_detection_results (
           filename,
+          s3_file_path,
           ai_score,
           verdict,
           confidence,
@@ -277,25 +352,50 @@ router.get("/:collectionId/submissions", requireAuth, async (req, res) => {
       return res.status(500).json({ error: "Failed to fetch submissions" });
     }
 
-    // Transform to frontend format
-    const formatted = submissions.map((sub) => ({
-      id: sub.id,
-      student_name: sub.student_name,
-      student_id: sub.student_id || "N/A",
-      submitted_at: sub.submitted_at,
-      updated_at: sub.updated_at,
-      files: sub.ai_detection_results.map((res) => ({
-        filename: res.filename,
-        ai_score: res.ai_score,
-        verdict: res.verdict,
-        confidence: res.confidence,
-        chunk_scores: res.chunk_scores,
-        similarity_score: res.similarity_score,
-        detection_status: res.detection_status,
-        detected_at: res.detected_at,
-        error_message: res.error_message,
-      })),
-    }));
+    // Transform to frontend format (with signed download URLs)
+    const formatted = await Promise.all(
+      submissions.map(async (sub) => ({
+        id: sub.id,
+        student_name: sub.student_name,
+        student_id: sub.student_id || "N/A",
+        student_email: sub.student_email || null,
+        student_notes: sub.student_notes || null,
+        custom_fields: sub.custom_fields || {},
+        submitted_at: sub.submitted_at,
+        updated_at: sub.updated_at,
+        files: await Promise.all(
+          sub.ai_detection_results.map(async (res) => {
+            let downloadUrl = null;
+            if (res.s3_file_path) {
+              try {
+                downloadUrl = await getSignedUrl(
+                  s3Client,
+                  new GetObjectCommand({
+                    Bucket: process.env.AWS_BUCKET_NAME,
+                    Key: res.s3_file_path,
+                  }),
+                  { expiresIn: 900 }
+                );
+              } catch (e) {
+                console.error("Signed URL error:", e.message);
+              }
+            }
+            return {
+              filename: res.filename,
+              download_url: downloadUrl,
+              ai_score: res.ai_score,
+              verdict: res.verdict,
+              confidence: res.confidence,
+              chunk_scores: res.chunk_scores,
+              similarity_score: res.similarity_score,
+              detection_status: res.detection_status,
+              detected_at: res.detected_at,
+              error_message: res.error_message,
+            };
+          })
+        ),
+      }))
+    );
 
     res.json({
       submissions: formatted,

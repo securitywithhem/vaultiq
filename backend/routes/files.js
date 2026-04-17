@@ -144,7 +144,6 @@ router.post('/upload', authenticateToken, upload.single('file'), async (req, res
       .insert({
         user_id: req.user.id,
         filename: sanitizedFilename,
-        original_filename: req.file.originalname, // Fallback for schema mismatch
         s3_key: s3Key,
         file_size: req.file.size,
         mime_type: req.file.mimetype || 'application/octet-stream',

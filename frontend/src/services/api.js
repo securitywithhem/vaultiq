@@ -24,7 +24,7 @@ function flushQueue(success) {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const PUBLIC   = ['/login', '/signup'];
+    const PUBLIC   = ['/login', '/signup', '/submit'];
     const onPublic = PUBLIC.some((p) => window.location.pathname.startsWith(p));
 
     // On public pages a 401 is expected — don't refresh or redirect
