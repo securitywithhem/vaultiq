@@ -30,6 +30,10 @@ const requireAuth = (req, res, next) => {
  */
 router.post("/", requireAuth, async (req, res) => {
   try {
+    console.log('📨 POST /collections received');
+    console.log('👤 User ID:', req.user?.id);
+    console.log('📝 Request body:', req.body);
+
     const { name, description, auto_detect_enabled, expires_at } = req.body;
     const userId = req.user.id;
 
@@ -56,11 +60,11 @@ router.post("/", requireAuth, async (req, res) => {
       .single();
 
     if (error) {
-      console.error("Supabase insert error:", error);
-      return res.status(500).json({ error: "Failed to create collection" });
+      console.error("❌ Supabase insert error:", error);
+      return res.status(500).json({ error: "Failed to create collection: " + error.message });
     }
 
-    console.log(`✓ Collection created: ${data.id}`);
+    console.log(`✅ Collection created: ${data.id}`, data);
     res.status(201).json({
       data: {
         id: data.id,
