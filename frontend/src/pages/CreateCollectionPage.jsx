@@ -26,9 +26,17 @@ export default function CreateCollectionPage() {
     setError('');
 
     try {
-      const result = await createCollection(formData);
+      // Convert datetime-local to ISO format if deadline is set
+      const dataToSend = { ...formData };
+      if (formData.expires_at) {
+        dataToSend.expires_at = new Date(formData.expires_at).toISOString();
+      }
+      console.log('📤 Sending collection data:', dataToSend);
+      const result = await createCollection(dataToSend);
+      console.log('✅ Collection created:', result);
       setSuccess(result);
     } catch (err) {
+      console.error('❌ Collection creation error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -52,20 +60,20 @@ export default function CreateCollectionPage() {
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}/submit/${success.shareCode}`}
+                value={`${window.location.origin}/submit/${success.data?.shareCode}`}
                 className="w-full px-4 py-3 bg-black text-white text-center font-mono text-sm rounded-lg"
               />
             </div>
 
             <div className="flex gap-4 justify-center">
               <button
-                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/submit/${success.shareCode}`)}
+                onClick={() => navigator.clipboard.writeText(`${window.location.origin}/submit/${success.data?.shareCode}`)}
                 className="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-500 transition"
               >
                 Copy Link
               </button>
               <button
-                onClick={() => navigate(`/collections/${success.id}`)}
+                onClick={() => navigate(`/collections/${success.data?.id}`)}
                 className="px-6 py-3 bg-violet-600 text-white font-bold rounded-xl hover:bg-violet-500 transition"
               >
                 Go to Dashboard
