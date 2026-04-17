@@ -1,6 +1,6 @@
 # VaultIQ
 
-**Secure Distributed Cloud Storage with AI-Powered Document Intelligence**
+**Secure Document Management with Microsoft Forms-Style Public Submissions & AI-Powered Intelligence**
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://python.org/)
@@ -13,27 +13,106 @@
 
 ## What is VaultIQ?
 
-VaultIQ is a full-stack, production-grade document storage platform built around three pillars:
+VaultIQ is a full-stack education platform combining secure file storage, Microsoft Forms-style public submissions, and AI-powered content intelligence.
 
-1. **Security** — every file is AES-256-CBC encrypted before it leaves the browser's network; the server never stores plaintext.
-2. **Intelligence** — a hybrid AI ensemble (RoBERTa deep learning + Logistic Regression on statistical features) detects whether uploaded documents contain AI-generated content.
-3. **Observability** — every platform event is streamed to Apache HDFS and batch-processed by Apache Spark, producing six categories of analytics (daily activity, anomalies, AI usage, storage, latency, user behaviour).
+**Core Features:**
+
+1. **Public Assignment Collections** — Teachers create collections with custom fields (name, email, student ID, dropdown options, etc.). Students submit via shareable `/submit/:code` links — no login required. Teachers review submissions, download files, and view responses.
+2. **Security** — Every file encrypted with AES-256-CBC before leaving the browser; SHA-256 integrity verification on download.
+3. **AI Content Detection** — Hybrid ensemble (RoBERTa + Logistic Regression) detects AI-generated content in submissions. Configurable per collection.
+4. **Analytics** — Apache Spark batch jobs produce 6 analytics categories from HDFS event logs (daily activity, anomalies, AI usage, storage, latency, user behaviour).
 
 ---
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [System Architecture](#system-architecture)
-- [End-to-End Project Flow](#end-to-end-project-flow)
+- [Public Submission Flow](#public-submission-flow)
 - [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [AI Detection Deep-Dive](#ai-detection-deep-dive)
-- [Big Data Pipeline Deep-Dive](#big-data-pipeline-deep-dive)
-- [Cloud Infrastructure Deep-Dive](#cloud-infrastructure-deep-dive)
-- [Security Model](#security-model)
 - [Setup & Running](#setup--running)
+- [Deployment](#deployment)
 - [API Reference](#api-reference)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Quick Start
+
+### 5-Minute Local Test
+
+```bash
+# 1. Clone and install
+git clone <repo> && cd vaultiq
+cd frontend && npm install && cd ..
+cd backend && npm install && cd ..
+
+# 2. Set up environment
+cp backend/.env.example backend/.env
+# Edit backend/.env with Supabase + AWS credentials
+
+# 3. Run all services
+./start.sh
+```
+
+Then visit:
+- **Teacher Dashboard:** http://localhost:3000/login
+- **Student Submit Form:** http://localhost:3000/submit/{shareCode}
+
+### First Use
+
+1. **Create a Collection**
+   - Log in as teacher
+   - Go to Collections → + New Collection
+   - Define custom fields (e.g., "Roll Number", "Topic Choice")
+   - Set max file size, allowed types, deadline
+   - Copy the `/submit/...` link
+
+2. **Share with Students**
+   - Give students the public link (no login needed)
+   - They fill form, upload files, submit
+   - You review on Dashboard → see email, responses, download files
+
+3. **Enable AI Detection** (optional)
+   - Toggle "Auto-detect AI in submissions" when creating collection
+   - Start FastAPI service: `uvicorn ai-service/main.py --port 8001`
+   - Submissions automatically scanned for AI content
+
+---
+
+## Public Submission Flow
+
+When you create a collection with a shareable link, students access it via the public form **without logging in**:
+
+```
+Teacher (Authenticated)
+├─ Creates collection with custom fields
+├─ Gets `/submit/abc123def456` link
+└─ Shares link via email/messaging
+
+Student (Public, No Auth)
+├─ Visits http://localhost:3000/submit/abc123def456
+├─ Sees form: Name, Email, custom fields, file upload
+├─ Drag-drops files (type + size validated client-side)
+├─ Submits
+└─ Sees success screen
+
+Teacher (Authenticated)
+├─ Views all submissions
+├─ Downloads files (signed S3 URLs)
+├─ Sees student email + custom field responses
+├─ Reviews AI detection results (if enabled)
+└─ Exports to CSV
+```
+
+**Public Routes (no auth required):**
+- `GET /api/share/:shareCode` — fetch collection schema
+- `POST /api/share/:shareCode/submit` — submit assignment
+
+**Teacher Routes (auth required):**
+- `POST /api/collections` — create collection with fields
+- `GET /api/collections` — list your collections + submission counts
+- `GET /api/collections/:id/submissions` — download files, see responses
 
 ---
 
@@ -786,6 +865,36 @@ DELETE /api/files/:id                 Delete single file  (requires auth)
 DELETE /api/files/bulk                { fileIds: [...] } — up to 50  (requires auth)
 ```
 
+### Collections (Public Submission)
+
+```
+GET  /api/share/:shareCode            Fetch collection schema (name, fields, deadline)  (public)
+POST /api/share/:shareCode/submit     Submit assignment (multipart files + custom fields)  (public)
+```
+
+**Example: Student submission payload:**
+```json
+{
+  "student_name": "John Doe",
+  "student_email": "john@school.edu",
+  "student_id": "12345",
+  "custom_fields": {
+    "field_1776426502119": 42
+  },
+  "files": [<multipart file 1>, <multipart file 2>]
+}
+```
+
+### Collections (Teacher Management)
+
+```
+POST /api/collections                 Create collection with custom fields  (requires auth)
+GET  /api/collections                 List user's collections + submission counts  (requires auth)
+GET  /api/collections/:id             Get collection details  (requires auth)
+GET  /api/collections/:id/submissions List all submissions + signed download URLs  (requires auth)
+POST /api/collections/:id/detect      Manually trigger AI detection on submissions  (requires auth)
+```
+
 ### AI Detection
 
 ```
@@ -836,6 +945,126 @@ POST /api/analytics/trigger           Spawn Spark batch job in background
 
 ---
 
+## Deployment
+
+### Option 1: AWS Elastic Beanstalk (Backend) + Vercel (Frontend) — Recommended
+
+**Best for:** Student projects, small teams, free tier usage.
+
+**Cost:** Free for 12 months (AWS), then ~$10-20/month for backend. Frontend free forever.
+
+#### Deploy Backend to AWS Elastic Beanstalk
+
+```bash
+# 1. Install EB CLI
+pip install awsebcli
+
+# 2. Initialize Elastic Beanstalk
+cd backend
+eb init -p node.js-20 vaultiq-backend --region us-east-1
+
+# 3. Create environment
+eb create vaultiq-prod
+
+# 4. Set environment variables
+eb setenv \
+  PORT=5000 \
+  NODE_ENV=production \
+  JWT_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
+  ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
+  SUPABASE_URL=<your-url> \
+  SUPABASE_ANON_KEY=<your-key> \
+  SUPABASE_SERVICE_KEY=<your-key> \
+  AWS_ACCESS_KEY_ID=<your-id> \
+  AWS_SECRET_ACCESS_KEY=<your-secret> \
+  AWS_REGION=us-east-1 \
+  S3_BUCKET_NAME=<your-bucket> \
+  AI_SERVICE_URL=http://your-ai-service.com \
+  ALLOWED_ORIGINS=https://your-vercel-domain.vercel.app
+
+# 5. Deploy
+eb deploy
+
+# 6. Get your live backend URL
+eb open
+# Note the URL like: vaultiq-prod.us-east-1.elasticbeanstalk.com
+```
+
+#### Deploy Frontend to Vercel
+
+```bash
+# 1. Push code to GitHub
+git push origin main
+
+# 2. Go to https://vercel.com
+# 3. Click "New Project" → import your GitHub repo
+# 4. Set environment variables:
+#    REACT_APP_API_URL = https://vaultiq-prod.us-east-1.elasticbeanstalk.com
+# 5. Click "Deploy"
+
+# Your frontend will be live at: https://vaultiq.vercel.app (or your domain)
+```
+
+#### Share with Students
+
+```
+Teacher: https://vaultiq.vercel.app/dashboard
+Student submit link: https://vaultiq.vercel.app/submit/abc123def456
+```
+
+---
+
+### Option 2: Railway (Backend) + Vercel (Frontend) — Simpler
+
+**Best for:** Quick deployment with minimal config.
+
+**Cost:** Free tier + paid as you scale (~$5-10/month typical).
+
+#### Deploy Backend to Railway
+
+```bash
+# 1. Go to https://railway.app
+# 2. Sign up with GitHub
+# 3. Click "New Project" → "Deploy from GitHub repo"
+# 4. Select vaultiq repository
+# 5. Add environment variables (same as above)
+# 6. Deploy button — auto-deploys from git
+# 7. Get backend URL from "Deployments" tab
+```
+
+Then follow Vercel steps above for frontend.
+
+---
+
+### Option 3: Docker on VPS (Full Control)
+
+**Best for:** Learning DevOps, custom configurations.
+
+**Cost:** ~$5-20/month for VPS (DigitalOcean, Linode, etc).
+
+```bash
+# On your VPS:
+git clone <repo> && cd vaultiq
+docker compose -f docker-compose.prod.yml up -d
+# Reverse proxy (Nginx) in front on port 80/443
+```
+
+---
+
+## Production Checklist
+
+- [ ] Set `NODE_ENV=production` in backend `.env`
+- [ ] Enable HTTPS (free via Let's Encrypt)
+- [ ] Set `JWT_SECRET` and `ENCRYPTION_KEY` to strong random values
+- [ ] Use managed PostgreSQL (Supabase, AWS RDS) — don't self-host
+- [ ] Use AWS S3 for file storage with proper IAM permissions
+- [ ] Enable CORS whitelist: only allow your frontend domain
+- [ ] Set up monitoring/alerting (Sentry, DataDog, etc)
+- [ ] Regular backups of Supabase database
+- [ ] Test full submission flow end-to-end before announcing to students
+
+---
+
 ## Troubleshooting
 
 **"Missing required environment variables"**
@@ -849,12 +1078,28 @@ POST /api/analytics/trigger           Spawn Spark batch job in background
 **"S3 access denied"**
 - Verify `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and that the IAM role has `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on the bucket.
 
-**"HDFS connection refused"**
-- Set `HDFS_ENABLED=false` in `.env` to use Supabase fallback logging (no Hadoop required).
-- Or start the HDFS containers: `docker compose up namenode datanode -d` and wait for the NameNode healthcheck to pass.
+**"Student submit link redirects to login"**
+- The `/submit/:code` route is public and should NOT redirect to login.
+- **Fix:** Ensure `frontend/src/services/api.js` line 27 includes `/submit` in the PUBLIC routes list.
+- Clear browser cache: `Ctrl+Shift+Delete` in DevTools.
+- Hard refresh: `Cmd+Shift+R` (Mac) or `Ctrl+Shift+R` (Windows).
+
+**"Collection not found or 404 on /api/share/:code"**
+- Verify the share code is correct — check database for valid codes.
+- Ensure collection status is `'active'` (not `'closed'` or `'archived'`).
+- Check if deadline has passed — expired collections reject submissions.
+
+**"File upload fails with 'type not allowed'"**
+- Verify file extension matches allowed types (e.g., use `.pdf` not `.PDF`).
+- Check collection's `allowed_types` in Supabase: `SELECT allowed_types FROM collections WHERE id='...'`
+- Try uploading a `.pdf`, `.docx`, or `.txt` file.
 
 **"File integrity check failed" (HTTP 409)**
 - The file was modified or corrupted in S3 after upload. The SHA-256 stored in Supabase no longer matches the ciphertext. Delete the file and re-upload.
+
+**"HDFS connection refused"**
+- Set `HDFS_ENABLED=false` in `.env` to use Supabase fallback logging (no Hadoop required).
+- Or start the HDFS containers: `docker compose up namenode datanode -d` and wait for the NameNode healthcheck to pass.
 
 **App shows blank page**
 - Check browser console for errors.
