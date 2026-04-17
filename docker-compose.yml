@@ -112,7 +112,7 @@ services:
 
   spark-master:
     platform: linux/amd64
-    image: bitnami/spark:3.5.0
+    image: apache/spark:latest
     container_name: spark-master
     restart: unless-stopped
     environment:
@@ -131,7 +131,7 @@ services:
 
   spark-worker:
     platform: linux/amd64
-    image: bitnami/spark:3.5.0
+    image: apache/spark:latest
     container_name: spark-worker
     restart: unless-stopped
     depends_on:
