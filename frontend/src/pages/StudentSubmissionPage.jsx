@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import StudentSubmissionForm from '../components/StudentSubmissionForm';
 
 export default function StudentSubmissionPage() {
@@ -37,10 +39,18 @@ export default function StudentSubmissionPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Submission failed');
+        const errorMsg = data.error || 'Submission failed';
+        toast.error(errorMsg);
+        setError(errorMsg);
+        setIsSubmitting(false);
+        return;
       }
+      toast.success('✓ Submission received! Teacher will review it shortly.');
+      await onSubmit(formData);
     } catch (err) {
-      setError(err.message);
+      const errorMsg = err.message || 'Network error. Please try again.';
+      toast.error(errorMsg);
+      setError(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -48,9 +58,12 @@ export default function StudentSubmissionPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="w-8 h-8 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin" />
-      </div>
+      <>
+        <Toaster position="top-right" />
+        <div className="flex items-center justify-center h-screen">
+          <div className="w-8 h-8 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin" />
+        </div>
+      </>
     );
   }
 
@@ -70,19 +83,22 @@ export default function StudentSubmissionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-black p-4">
-      <div className="max-w-2xl mx-auto py-12">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-4">{collection.name}</h1>
-          <p className="text-gray-400 text-lg">Submit your assignment below</p>
-        </div>
+    <>
+      <Toaster position="top-right" />
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 to-black p-4">
+        <div className="max-w-2xl mx-auto py-12">
+          {/* Header */}
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-white mb-4">{collection.name}</h1>
+            <p className="text-gray-400 text-lg">Submit your assignment below</p>
+          </div>
 
-        {/* Form */}
-        <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8">
-          <StudentSubmissionForm collectionName={collection.name} onSubmit={handleSubmit} isLoading={isSubmitting} />
+          {/* Form */}
+          <div className="bg-gray-900 border border-gray-800 rounded-3xl p-8">
+            <StudentSubmissionForm collectionName={collection.name} onSubmit={handleSubmit} isLoading={isSubmitting} />
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
