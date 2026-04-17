@@ -26,6 +26,7 @@ const XIcon = () => (
 
 const NAV_LINKS = [
   { to: '/dashboard',    label: 'Dashboard'    },
+  { to: '/collections',  label: 'Collections'  },
   { to: '/files',        label: 'Files'        },
   { to: '/ai-detection', label: 'AI Detection' },
   { to: '/analytics',    label: 'Analytics'    },
