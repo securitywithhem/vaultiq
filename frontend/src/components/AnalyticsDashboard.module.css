@@ -23,6 +23,14 @@
   border-bottom: 1px solid var(--border);
 }
 
+.pageTitle {
+  font-size: var(--fs-title1);
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  margin: 0 0 var(--sp-2);
+  letter-spacing: -0.5px;
+}
+
 .titleRow {
   display: flex;
   align-items: center;

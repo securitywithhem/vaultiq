@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import api from '../services/api';
 
 export default function CollectionsPage() {
   const [collections, setCollections] = useState([]);
@@ -16,11 +17,8 @@ export default function CollectionsPage() {
 
   const fetchCollections = async () => {
     try {
-      const response = await fetch('/api/collections', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      const data = await response.json();
-      setCollections(data.collections || []);
+      const response = await api.get('/api/collections');
+      setCollections(response.data?.data?.collections || []);
     } catch (err) {
       setError('Failed to load collections');
     } finally {

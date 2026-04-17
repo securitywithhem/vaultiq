@@ -269,6 +269,7 @@ const AnalyticsDashboard = () => {
         {/* ── A. Header (source badge + timestamp + trigger, no big title) ── */}
         <div className={styles.header}>
           <div>
+            <h1 className={styles.pageTitle}>VaultIQ Analytics</h1>
             <div className={styles.titleRow}>
               {data && <SourceBadge source={data.source} />}
               <p className={styles.subtitle} style={{ margin: 0 }}>
@@ -330,7 +331,7 @@ const AnalyticsDashboard = () => {
           <>
             {/* ── B. Metric cards ─────────────────────────────────────────── */}
             <div className={styles.metricsGrid}>
-              <MetricCard label="Total Vault Files"      value={(data._summary?.total_files ?? 0).toLocaleString()} accent="#0a84ff" />
+              <MetricCard label="Events Today"           value={((uploads[todayIdx] || 0) + (downloads[todayIdx] || 0) + todayDetects).toLocaleString()} accent="#0a84ff" />
               <MetricCard label="Storage Uploaded Today" value={fmtMB(todayBytes)} accent="#30d158" />
               <MetricCard label="AI Detections Today"    value={todayDetects.toLocaleString()} accent="#bf5af2" />
               <MetricCard

@@ -16,7 +16,7 @@ if command -v spark-submit &>/dev/null; then
   fi
 else
   echo "[VaultIQ Analytics] Spark not found — running Python fallback"
-  python3 bigdata/mapreduce_fallback.py
+  python3 "$SCRIPT_DIR/mapreduce_fallback.py"
 fi
 
 echo "[VaultIQ Analytics] Done at $(date -u)"
