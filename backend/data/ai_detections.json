@@ -7,6 +7,14 @@
       "verdict": "mixed",
       "score": 0.5,
       "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-17T06:26:07.118Z",
+      "user_id": "b8e36a5f-b6ac-4057-aeb7-348e4086bb81",
+      "filename": "EduVault.docx",
+      "verdict": "mixed",
+      "score": 0.5,
+      "confidence": "medium"
     }
   ]
 }
