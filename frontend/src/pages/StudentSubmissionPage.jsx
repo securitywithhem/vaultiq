@@ -18,13 +18,24 @@ export default function StudentSubmissionPage() {
   const fetchCollection = async () => {
     try {
       const response = await fetch(`/api/share/${shareCode}`);
-      const data = await response.json();
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      let data;
+
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // Server returned HTML error page
+        throw new Error('Invalid collection share code or collection not found');
+      }
+
       if (!response.ok) {
         throw new Error(data.error || 'Collection not found');
       }
       setCollection(data);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to load collection');
     } finally {
       setLoading(false);
     }
@@ -37,14 +48,22 @@ export default function StudentSubmissionPage() {
         method: 'POST',
         body: formData,
       });
-      const data = await response.json();
+
+      const contentType = response.headers.get('content-type');
+      let data = {};
+
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      }
+
       if (!response.ok) {
-        const errorMsg = data.error || 'Submission failed';
+        const errorMsg = data.error || `Submission failed (${response.status})`;
         toast.error(errorMsg);
         setError(errorMsg);
         setIsSubmitting(false);
         return;
       }
+
       toast.success('✓ Submission received! Teacher will review it shortly.');
     } catch (err) {
       const errorMsg = err.message || 'Network error. Please try again.';
