@@ -31,9 +31,12 @@ export default function CreateCollectionPage() {
       if (formData.expires_at) {
         dataToSend.expires_at = new Date(formData.expires_at).toISOString();
       }
+      console.log('📤 Sending collection data:', dataToSend);
       const result = await createCollection(dataToSend);
+      console.log('✅ Collection created:', result);
       setSuccess(result);
     } catch (err) {
+      console.error('❌ Collection creation error:', err);
       setError(err.message);
     } finally {
       setLoading(false);
