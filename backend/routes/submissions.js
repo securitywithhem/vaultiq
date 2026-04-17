@@ -28,15 +28,24 @@ router.post("/:shareCode/submit", upload.array("files"), async (req, res) => {
     const { student_name, student_id, student_notes } = req.body;
     const files = req.files || []; // From multer middleware
 
+    console.log('📤 POST /share/:shareCode/submit received');
+    console.log('   Share code:', shareCode);
+    console.log('   Student name:', student_name);
+    console.log('   Student ID:', student_id);
+    console.log('   Files count:', files.length);
+
     if (!student_name || student_name.trim() === "") {
+      console.warn('⚠️  Missing student name');
       return res.status(400).json({ error: "Student name is required" });
     }
 
     if (files.length === 0) {
+      console.warn('⚠️  No files provided');
       return res.status(400).json({ error: "At least one file is required" });
     }
 
     // Find collection by share code
+    console.log('🔍 Querying collection by share code:', shareCode);
     const { data: collection, error: collError } = await supabase
       .from("collections")
       .select("id, auto_detect_enabled, expires_at")
@@ -44,9 +53,17 @@ router.post("/:shareCode/submit", upload.array("files"), async (req, res) => {
       .eq("status", "active")
       .single();
 
-    if (collError || !collection) {
+    if (collError) {
+      console.error('❌ Collection query error:', collError);
       return res.status(404).json({ error: "Collection not found or expired" });
     }
+
+    if (!collection) {
+      console.error('❌ Collection not found for share code:', shareCode);
+      return res.status(404).json({ error: "Collection not found or expired" });
+    }
+
+    console.log('✅ Collection found:', collection.id);
 
     // Check deadline
     if (collection.expires_at && new Date(collection.expires_at) < new Date()) {
@@ -136,6 +153,10 @@ router.post("/:shareCode/submit", upload.array("files"), async (req, res) => {
 router.get("/:shareCode", async (req, res) => {
   try {
     const { shareCode } = req.params;
+    console.log('🔍 GET /share/:shareCode requested');
+    console.log('   Share code:', shareCode);
+    console.log('   Share code type:', typeof shareCode);
+    console.log('   Share code length:', shareCode?.length);
 
     const { data, error } = await supabase
       .from("collections")
@@ -143,21 +164,35 @@ router.get("/:shareCode", async (req, res) => {
       .eq("unique_share_code", shareCode)
       .single();
 
-    if (error || !data) {
+    if (error) {
+      console.error('❌ Query error:', error);
+      console.error('   Error code:', error.code);
+      console.error('   Error message:', error.message);
       return res.status(404).json({ error: "Collection not found" });
     }
 
+    if (!data) {
+      console.error('❌ No data returned from query');
+      return res.status(404).json({ error: "Collection not found" });
+    }
+
+    console.log('✅ Collection found:', data.id, data.name);
+
     if (data.status !== "active") {
+      console.warn('⚠️  Collection status is not active:', data.status);
       return res.status(410).json({ error: "Collection is no longer accepting submissions" });
     }
 
-    res.json({
+    const responseData = {
       id: data.id,
       name: data.name,
       valid: true,
-    });
+    };
+    console.log('📤 Sending collection info:', responseData);
+    res.json(responseData);
   } catch (error) {
-    console.error("GET /share/:shareCode error:", error);
+    console.error("❌ GET /share/:shareCode error:", error);
+    console.error("   Stack:", error.stack);
     res.status(500).json({ error: "Internal server error" });
   }
 });

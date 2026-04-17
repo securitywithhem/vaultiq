@@ -37,35 +37,48 @@ router.post("/", requireAuth, async (req, res) => {
     const { name, description, auto_detect_enabled, expires_at } = req.body;
     const userId = req.user.id;
 
+    if (!userId) {
+      console.error("❌ No user ID found in request");
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
     if (!name || name.trim() === "") {
       return res.status(400).json({ error: "Collection name is required" });
     }
 
     const shareCode = generateShareCode();
+    console.log('🔑 Generated share code:', shareCode);
+
+    const insertData = {
+      user_id: userId,
+      name,
+      description: description || null,
+      auto_detect_enabled: auto_detect_enabled !== false,
+      expires_at: expires_at || null,
+      unique_share_code: shareCode,
+      status: "active",
+    };
+    console.log('📋 Insert data:', JSON.stringify(insertData, null, 2));
 
     const { data, error } = await supabase
       .from("collections")
-      .insert([
-        {
-          user_id: userId,
-          name,
-          description: description || null,
-          auto_detect_enabled: auto_detect_enabled !== false,
-          expires_at: expires_at || null,
-          unique_share_code: shareCode,
-          status: "active",
-        },
-      ])
+      .insert([insertData])
       .select()
       .single();
 
     if (error) {
       console.error("❌ Supabase insert error:", error);
+      console.error("   Error code:", error.code);
+      console.error("   Error message:", error.message);
+      console.error("   Error details:", error);
       return res.status(500).json({ error: "Failed to create collection: " + error.message });
     }
 
-    console.log(`✅ Collection created: ${data.id}`, data);
-    res.status(201).json({
+    console.log(`✅ Collection created with ID: ${data.id}`);
+    console.log('   Share code in response:', data.unique_share_code);
+    console.log('   Full response data:', JSON.stringify(data, null, 2));
+
+    const responseData = {
       data: {
         id: data.id,
         name: data.name,
@@ -73,9 +86,12 @@ router.post("/", requireAuth, async (req, res) => {
         autoDetectEnabled: data.auto_detect_enabled,
         createdAt: data.created_at,
       },
-    });
+    };
+    console.log('📤 Sending response:', JSON.stringify(responseData, null, 2));
+    res.status(201).json(responseData);
   } catch (error) {
-    console.error("POST /collections error:", error);
+    console.error("❌ POST /collections error:", error);
+    console.error("   Stack:", error.stack);
     res.status(500).json({ error: "Internal server error" });
   }
 });
