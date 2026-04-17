@@ -41,6 +41,7 @@ const Navbar = () => {
         {/* Desktop Links */}
         <div className={styles.desktopLinks}>
           <NavLink to="/dashboard"    className={({ isActive }) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>Dashboard</NavLink>
+          <NavLink to="/collections"  className={({ isActive }) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>Collections</NavLink>
           <NavLink to="/analytics"    className={({ isActive }) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>Analytics</NavLink>
           <NavLink to="/ai-detection" className={({ isActive }) => isActive ? `${styles.link} ${styles.activeLink}` : styles.link}>AI Check</NavLink>
         </div>
@@ -104,6 +105,7 @@ const Navbar = () => {
       {isMobileMenuOpen && (
         <div className={styles.mobileMenu}>
           <NavLink to="/dashboard"    className={styles.mobileLink} onClick={toggleMenu}>Dashboard</NavLink>
+          <NavLink to="/collections"  className={styles.mobileLink} onClick={toggleMenu}>Collections</NavLink>
           <NavLink to="/analytics"    className={styles.mobileLink} onClick={toggleMenu}>Analytics</NavLink>
           <NavLink to="/ai-detection" className={styles.mobileLink} onClick={toggleMenu}>AI Check</NavLink>
           <div className={styles.mobileUserSection}>
