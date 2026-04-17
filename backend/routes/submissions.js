@@ -2,10 +2,12 @@
 
 const express = require("express");
 const multer = require("multer");
+const path = require("path");
 const { v4: uuidv4 } = require("uuid");
 const { supabase } = require("../data/supabaseClient");
 const { uploadToS3 } = require("../utils/collectionHelpers");
 const { processDetectionsAsync } = require("../utils/detectionHelper");
+const { logEvent } = require("../utils/hdfsLogger");
 const axios = require("axios");
 
 const router = express.Router();
@@ -30,12 +32,17 @@ const handleUpload = (req, res, next) => {
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function asyncLog(eventType, payload) {
+  logEvent(eventType, payload).catch(() => {});
+}
+
 /**
  * POST /api/share/:shareCode/submit
  * Student submits files to a collection
  * Auth: None (public endpoint)
  */
 router.post("/:shareCode/submit", handleUpload, async (req, res) => {
+  const start = Date.now();
   try {
     const { shareCode } = req.params;
     const {
@@ -181,6 +188,17 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
         processDetectionsAsync(results, collection.id);
       }
     }
+
+    // Log submission event for Big Data analytics
+    const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
+    asyncLog('submission', {
+      userId: student_email || 'anonymous',
+      fileName: files.map(f => f.originalname).join(', '),
+      fileSizeBytes: totalBytes,
+      fileType: files.length > 0 ? path.extname(files[0].originalname) : 'unknown',
+      ipAddress: req.ip,
+      durationMs: Date.now() - start,
+    });
 
     res.status(201).json({
       message: "Submission received. Teacher will review.",
