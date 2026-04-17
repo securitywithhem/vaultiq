@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require("uuid");
 const { generateShareCode } = require("../utils/collectionHelpers");
 const { createClient } = require("@supabase/supabase-js");
 const { processDetectionsAsync } = require("../utils/detectionHelper");
+const { authenticateToken } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -10,6 +11,9 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+// Apply authentication to all routes
+router.use(authenticateToken);
 
 // Middleware to check auth
 const requireAuth = (req, res, next) => {

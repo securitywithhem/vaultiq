@@ -82,12 +82,13 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     const { email, password } = req.body;
 
     // Check account lockout BEFORE attempting authentication
-    // We need user ID for lockout check — do a pre-lookup
-    const { data: userLookup } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('email', email)
-      .single();
+    // We need user ID for lockout check — look up via auth admin API
+    let userLookup = null;
+    try {
+      const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+      const found = listData?.users?.find(u => u.email === email);
+      if (found) userLookup = { id: found.id };
+    } catch (_) { /* lockout pre-check is best-effort */ }
 
     if (userLookup?.id) {
       const locked = await isAccountLocked(userLookup.id);

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import CollectionSummary from '../components/CollectionSummary';
 import SubmissionList from '../components/SubmissionList';
+import api from '../services/api';
 
 export default function CollectionDetailsPage() {
   const { id } = useParams();
@@ -20,17 +21,11 @@ export default function CollectionDetailsPage() {
 
   const fetchData = async () => {
     try {
-      const colRes = await fetch(`/api/collections/${id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      const collectionData = await colRes.json();
-      setCollection(collectionData);
+      const colRes = await api.get(`/api/collections/${id}`);
+      setCollection(colRes.data?.data || null);
 
-      const subRes = await fetch(`/api/collections/${id}/submissions`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      const submissionsData = await subRes.json();
-      setSubmissions(submissionsData.submissions || []);
+      const subRes = await api.get(`/api/collections/${id}/submissions`);
+      setSubmissions(subRes.data?.submissions || []);
     } catch (err) {
       setError('Failed to load data');
     } finally {
@@ -40,14 +35,7 @@ export default function CollectionDetailsPage() {
 
   const handleRunDetection = async (submissionId) => {
     try {
-      await fetch(`/api/collections/${id}/detect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({ submissionIds: [submissionId] }),
-      });
+      await api.post(`/api/collections/${id}/detect`, { submissionIds: [submissionId] });
       // Refetch immediately to show processing status
       await fetchData();
     } catch (err) {
@@ -57,14 +45,7 @@ export default function CollectionDetailsPage() {
 
   const handleRunAllDetection = async () => {
     try {
-      await fetch(`/api/collections/${id}/detect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({}),
-      });
+      await api.post(`/api/collections/${id}/detect`, {});
       await fetchData();
     } catch (err) {
       setError('Failed to trigger bulk detection');
@@ -101,11 +82,11 @@ export default function CollectionDetailsPage() {
             <input
               type="text"
               readOnly
-              value={`${window.location.origin}/submit/${collection.unique_share_code}`}
+              value={`${window.location.origin}/submit/${collection.shareCode}`}
               className="flex-1 px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm"
             />
             <button
-              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/submit/${collection.unique_share_code}`)}
+              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/submit/${collection.shareCode}`)}
               className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-500"
             >
               Copy

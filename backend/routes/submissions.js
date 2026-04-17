@@ -6,7 +6,6 @@ const { v4: uuidv4 } = require("uuid");
 const { supabase } = require("../data/supabaseClient");
 const { uploadToS3 } = require("../utils/collectionHelpers");
 const { processDetectionsAsync } = require("../utils/detectionHelper");
-const { requireAuth } = require("../middleware/auth");
 const axios = require("axios");
 
 const router = express.Router();
