@@ -10,11 +10,13 @@ from __future__ import annotations
 import logging
 import string
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import joblib
 import numpy as np
+from scipy.stats import entropy as scipy_entropy
 
 try:
     import torch
@@ -26,12 +28,6 @@ try:
 except ImportError:
     _TORCH_AVAILABLE = False
 
-try:
-    import similarity
-    import similarity_ensemble
-    _SIMILARITY_AVAILABLE = True
-except Exception:
-    _SIMILARITY_AVAILABLE = False
 
 # For logistic regression typing, not strictly required at runtime for inference
 # as we load from joblib, but good for DUMMY class definition.
@@ -117,7 +113,7 @@ def extract_features(text: str) -> np.ndarray:
     COMPONENT 1 — Statistical feature extractor
 
     Computes 5 features from raw text:
-      0. Perplexity proxy (avg log prob using GPT-2)
+      0. Perplexity proxy (avg log prob using GPT-2, or word length variance if unavailable)
       1. Burstiness (variance of sentence lengths / mean sentence length)
       2. Type-Token Ratio (unique words / total words)
       3. Average sentence length (mean word count per sentence)
@@ -126,19 +122,25 @@ def extract_features(text: str) -> np.ndarray:
     if not text.strip():
         return np.zeros(5)
 
-    # 1. Perplexity proxy
-    try:
-        assert _gpt2_tokenizer is not None, "Tokenizer not loaded"
-        assert _gpt2_model is not None, "Model not loaded"
-        inputs = _gpt2_tokenizer(
-            text, return_tensors="pt", truncation=True, max_length=1024
-        )
-        with torch.no_grad():
-            outputs = _gpt2_model(inputs["input_ids"], labels=inputs["input_ids"])
-            perplexity = torch.exp(outputs.loss).item()
-    except Exception as e:
-        logger.warning(f"Failed to compute perplexity: {e}")
-        perplexity = 0.0
+    # 1. Perplexity proxy (with fallback to word length variance)
+    perplexity = 0.0
+    if _gpt2_tokenizer is not None and _gpt2_model is not None:
+        try:
+            inputs = _gpt2_tokenizer(
+                text, return_tensors="pt", truncation=True, max_length=1024
+            )
+            with torch.no_grad():
+                outputs = _gpt2_model(inputs["input_ids"], labels=inputs["input_ids"])
+                perplexity = torch.exp(outputs.loss).item()
+        except Exception as e:
+            pass
+
+    # Fallback: use word length variance as proxy if perplexity is 0
+    if perplexity == 0.0:
+        words = text.split()
+        if len(words) > 1:
+            word_lengths = [len(w) for w in words]
+            perplexity = float(np.var(word_lengths)) / (np.mean(word_lengths) + 0.1)
 
     # Parse basic structural lists
     sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.') if s.strip()]
@@ -171,7 +173,29 @@ def extract_features(text: str) -> np.ndarray:
     else:
         punct_density = 0.0
 
-    return np.array([perplexity, burstiness, ttr, avg_sent_len, punct_density])
+    # 6. Entropy of word frequencies (semantic diversity)
+    if words:
+        word_freq = Counter(w.lower() for w in words)
+        freq_values = np.array(list(word_freq.values()))
+        freq_prob = freq_values / freq_values.sum()
+        word_entropy = -np.sum(freq_prob * np.log(freq_prob + 1e-10))
+    else:
+        word_entropy = 0.0
+
+    # 7. Average word length (stylometric marker)
+    if words:
+        avg_word_len = np.mean([len(w) for w in words])
+    else:
+        avg_word_len = 0.0
+
+    # 8. Named entity density approximation (capitalization patterns)
+    capitalized_words = sum(1 for w in words if w and w[0].isupper())
+    proper_noun_density = capitalized_words / max(total_words, 1)
+
+    return np.array([
+        perplexity, burstiness, ttr, avg_sent_len, punct_density,
+        word_entropy, avg_word_len, proper_noun_density
+    ])
 
 
 def roberta_score(text: str) -> float:
@@ -266,30 +290,6 @@ def detect(chunks: list[str]) -> dict[str, Any]:
 
     avg_score = round(avg_score, 2)
 
-    # --- New: Similarity Integration ---
-    # Aggregate similarity across all chunks
-    overall_similarity: float = 0.0
-    matched_excerpts: list[str] = []
-    
-    for chunk in chunks:
-        if not chunk.strip():
-            continue
-        try:
-            # Perform similarity search for each chunk
-            # similarity.search returns (cosine, jaccard, semantic, matched_text)
-            cosine, jaccard, semantic, matched_text = similarity.search(chunk)
-            # similarity_ensemble computes weighted average
-            s_agg = similarity_ensemble.aggregate_scores(cosine, jaccard, semantic, chunk, matched_text)
-            overall_similarity += s_agg["plagiarism_score"]
-            if s_agg["verdict"] != "original":
-                # Keep track of significant matches
-                matched_excerpts.append(s_agg["matched_excerpt"])
-        except Exception as e:
-            logger.error(f"Error computing similarity for chunk: {e}")
-
-    final_similarity = round(overall_similarity / len(chunks) if chunks else 0.0, 4)
-    # ------------------------------------
-
     if avg_score < 0.4:
         verdict = "human"
     elif avg_score <= 0.7:
@@ -314,8 +314,4 @@ def detect(chunks: list[str]) -> dict[str, Any]:
         "confidence": confidence,
         "chunk_scores": [round(s, 2) for s in chunk_scores],
         "warning": warning,
-        # Integrated similarity metrics
-        "similarity_score": final_similarity,
-        "similarity_verdict": "high" if final_similarity > 0.65 else "medium" if final_similarity > 0.3 else "low",
-        "top_matches": list(set(matched_excerpts))[:3] # unique excerpts
     }

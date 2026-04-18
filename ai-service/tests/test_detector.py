@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from detector import extract_features, load_models
+from core.detector import extract_features, load_models
 from main import app
 
 client = TestClient(app)

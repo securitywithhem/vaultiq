@@ -53,8 +53,8 @@ def _as_timestamp(col_name: str = "timestamp"):
 
 
 def _safe_size():
-    """Coerce file_size to bigint, replacing NULL with 0."""
-    return F.coalesce(F.col("file_size").cast("bigint"), F.lit(0))
+    """Coerce file_size_bytes to bigint, replacing NULL with 0."""
+    return F.coalesce(F.col("file_size_bytes").cast("bigint"), F.lit(0))
 
 
 # ─── Analytics ────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ def compute_daily_trend(df: DataFrame) -> DataFrame:
         uploads  long
     """
     return (
-        df.filter(F.col("event") == "upload")
+        df.filter(F.col("event_type") == "file_upload")
           .withColumn("date", F.to_date(_as_timestamp()))
           .groupBy("date")
           .agg(F.count("*").alias("uploads"))
@@ -87,9 +87,10 @@ def compute_top_files(df: DataFrame) -> DataFrame:
         downloads  long
     """
     return (
-        df.filter(F.col("event") == "download")
-          .groupBy("filename")
+        df.filter(F.col("event_type") == "file_download")
+          .groupBy("file_name")
           .agg(F.count("*").alias("downloads"))
+          .withColumnRenamed("file_name", "filename")
           .orderBy(F.col("downloads").desc())
           .limit(10)
     )
@@ -106,7 +107,7 @@ def compute_user_storage(df: DataFrame) -> DataFrame:
         file_count   long
     """
     return (
-        df.filter(F.col("event") == "upload")
+        df.filter(F.col("event_type") == "file_upload")
           .groupBy("user_id")
           .agg(
               F.sum(_safe_size()).alias("total_bytes"),
@@ -125,8 +126,8 @@ def compute_event_breakdown(df: DataFrame) -> DataFrame:
         count  long
     """
     return (
-        df.groupBy("event")
-          .agg(F.count("*").alias("count"))
+        df.groupBy("event_type")
+          .agg(F.count("*").alias("count")).withColumnRenamed("event_type", "event")
     )
 
 
@@ -158,7 +159,7 @@ def compute_platform_totals(df: DataFrame) -> DataFrame:
         total_bytes_uploaded long
     """
     upload_bytes = F.when(
-        F.col("event") == "upload", _safe_size()
+        F.col("event_type") == "file_upload", _safe_size()
     ).otherwise(F.lit(0))
 
     return df.agg(
