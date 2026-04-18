@@ -24,9 +24,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import detector
-import extractor
-import preprocessor
+from core import detector, extractor, preprocessor
 
 # ---------------------------------------------------------------------------
 # Configuration

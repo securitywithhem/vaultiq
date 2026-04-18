@@ -3,7 +3,7 @@ import os
 import tempfile
 from unittest.mock import patch, MagicMock
 
-import extractor
+from core import extractor
 
 
 def test_internal_extraction_structure():

@@ -7,9 +7,12 @@ export const fileService = {
     formData.append('file', file);
 
     const response = await api.post('/api/files/upload', formData, {
-      onUploadProgress
+      onUploadProgress,
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
     });
-    
+
     return response.data.data.file;
   },
 

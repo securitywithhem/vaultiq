@@ -68,6 +68,7 @@ services:
       "
     environment:
       HADOOP_HOME: /opt/hadoop
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
     ports:
       - "9870:9870"   # NameNode Web UI / WebHDFS
       - "9000:9000"   # HDFS RPC
@@ -90,6 +91,7 @@ services:
     command: ["hdfs", "datanode"]
     environment:
       HADOOP_HOME: /opt/hadoop
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
     volumes:
       - hadoop_datanode:/hadoop/dfs/data
     depends_on:
