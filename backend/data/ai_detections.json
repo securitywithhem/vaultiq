@@ -15,6 +15,118 @@
       "verdict": "mixed",
       "score": 0.5,
       "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-18T14:51:03.608Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Feedback_phase1.docx",
+      "verdict": "ai_generated",
+      "score": 0.75,
+      "confidence": "low"
+    },
+    {
+      "timestamp": "2026-04-18T14:51:38.257Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Happiest Minds Technologies | Standalone Profit & Loss account > IT Services & Consulting > Standalone Profit & Loss account of Happiest Minds Technologies - BSE: 543227, NSE: HAPPSTMNDS.pdf",
+      "verdict": "mixed",
+      "score": 0.61,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-18T14:52:42.948Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "EduVault.docx",
+      "verdict": "ai_generated",
+      "score": 0.74,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-18T14:53:11.222Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "EduVault.docx",
+      "verdict": "ai_generated",
+      "score": 0.74,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-18T14:53:11.222Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "EduVault.docx",
+      "verdict": "ai_generated",
+      "score": 0.74,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-18T14:53:35.776Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_Lab10.docx",
+      "verdict": "ai_generated",
+      "score": 0.82,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:06:06.195Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_lab4.docx",
+      "verdict": "ai_generated",
+      "score": 0.74,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:06:06.195Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab_4_____Deep_Web_surfing.docx",
+      "verdict": "mixed",
+      "score": 0.65,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:06:06.195Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab_1_-_Passive_Domain___Network_Information_Gathering.docx",
+      "verdict": "ai_generated",
+      "score": 0.85,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:06:06.195Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab_2_-_Packet_Sniffer.docx",
+      "verdict": "ai_generated",
+      "score": 0.85,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-18T15:06:06.195Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab1Report.docx",
+      "verdict": "ai_generated",
+      "score": 0.85,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:06:31.924Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_Hem_lab3.docx",
+      "verdict": "ai_generated",
+      "score": 0.78,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:07:00.751Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_Hem_lab3.docx",
+      "verdict": "ai_generated",
+      "score": 0.78,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-18T15:07:00.751Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_Hem_Lab5.pdf",
+      "verdict": "ai_generated",
+      "score": 0.77,
+      "confidence": "high"
     }
   ]
 }
