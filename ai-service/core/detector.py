@@ -34,9 +34,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = Path(__file__).parent / "models"
+MODELS_DIR = Path(__file__).parent.parent / "models"
 LR_MODEL_PATH = MODELS_DIR / "lr_model_calibrated.pkl"  # Use calibrated model with Platt scaling
 LR_MODEL_PATH_FALLBACK = MODELS_DIR / "lr_model.pkl"  # Fallback to uncalibrated if calibrated unavailable
+ENSEMBLE_CONFIG_PATH = MODELS_DIR / "ensemble_config.json"
+
+# Ensemble blend weights — overwritten at load time from ENSEMBLE_CONFIG_PATH if present.
+_W_ROBERTA: float = 0.7
+_W_LR: float = 0.3
 
 # Global model references
 _roberta_model = None
@@ -50,8 +55,21 @@ _using_dummy_lr: bool = False  # Fix 4: track whether LR is real or dummy
 def load_models() -> None:
     """Pre-load all required models for the ensemble."""
     global _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr, _gpt2_model, _gpt2_tokenizer
+    global _W_ROBERTA, _W_LR
 
     start_time = time.time()
+
+    # Load ensemble blend weights if tuned config exists.
+    if ENSEMBLE_CONFIG_PATH.exists():
+        try:
+            import json as _json
+            with open(ENSEMBLE_CONFIG_PATH) as _f:
+                _cfg = _json.load(_f)
+            _W_ROBERTA = float(_cfg.get("w_roberta", _W_ROBERTA))
+            _W_LR = float(_cfg.get("w_lr", _W_LR))
+            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f}")
+        except Exception as e:
+            logger.warning(f"Failed to load ensemble_config.json: {e}")
 
     if not _TORCH_AVAILABLE:
         logger.warning("torch/transformers not installed — running in statistical-only mode.")
@@ -312,10 +330,9 @@ def roberta_score(text: str) -> float:
         )
         with torch.no_grad():
             outputs = _roberta_model(**inputs)
-            # Softmax to get probabilities
             probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            # Index 1 is often 'Fake'/'AI-generated' for openai-detector models
-            fake_prob = probs[0][1].item()
+            # roberta-base-openai-detector: id2label = {0: 'Fake', 1: 'Real'}
+            fake_prob = probs[0][0].item()
             return float(fake_prob)
     except Exception as e:
         logger.warning(f"RoBERTa scoring failed: {e}")
@@ -346,11 +363,13 @@ def ensemble_score(text: str) -> float:
     """
     COMPONENT 4 — Meta ensemble
 
-    Weighted average: 0.7 * roberta + 0.3 * lr
+    Weighted average: _W_ROBERTA * roberta + _W_LR * lr
+    Weights are tuned on a held-out set (see scripts/optimize_ensemble.py)
+    and loaded at startup from models/ensemble_config.json.
     """
     r_score = roberta_score(text)
     l_score = lr_score(text)
-    return 0.7 * r_score + 0.3 * l_score
+    return _W_ROBERTA * r_score + _W_LR * l_score
 
 
 def detect(chunks: list[str]) -> dict[str, Any]:

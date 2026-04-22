@@ -1,0 +1,74 @@
+{
+  "n_train": 175054,
+  "n_val": 37520,
+  "n_test": 37514,
+  "class_balance": {
+    "human": 125044,
+    "ai": 125044
+  },
+  "sources": {
+    "hc3": 51411,
+    "kaggle_webtext": 51771,
+    "kaggle_gpt2": 85732,
+    "pubmed_PubMedQA": 20862,
+    "kaggle_corpus": 13142,
+    "arxiv": 20544,
+    "pubmed_pqa_unlabeled": 6526,
+    "pubmed_pqa_labeled": 100
+  },
+  "model": "Pipeline(RobustScaler + HistGradientBoostingClassifier)",
+  "hyperparams": {
+    "max_iter": 500,
+    "learning_rate": 0.07,
+    "max_depth": 8,
+    "min_samples_leaf": 40,
+    "l2_regularization": 0.5,
+    "random_state": 42,
+    "class_weight": "balanced",
+    "early_stopping": true,
+    "validation_fraction": 0.1,
+    "n_iter_no_change": 20
+  },
+  "base_val_thr0.5": {
+    "threshold": 0.5,
+    "accuracy": 0.8498400852878465,
+    "precision": 0.8444782699979004,
+    "recall": 0.8576226012793177,
+    "f1": 0.8509996826404316,
+    "roc_auc": 0.937656031921568
+  },
+  "base_test_thr0.5": {
+    "threshold": 0.5,
+    "accuracy": 0.8536546356027083,
+    "precision": 0.8464873335074432,
+    "recall": 0.8639974409553767,
+    "f1": 0.8551527623872092,
+    "roc_auc": 0.9377951809792827
+  },
+  "base_test_tuned": {
+    "threshold": 0.43566795527936186,
+    "accuracy": 0.8498960388121768,
+    "precision": 0.8213061784000784,
+    "recall": 0.8943860958575465,
+    "f1": 0.8562897174795192,
+    "roc_auc": 0.9377951809792827
+  },
+  "calibrated_test_thr0.5": {
+    "threshold": 0.5,
+    "accuracy": 0.855014128058858,
+    "precision": 0.8537881202847731,
+    "recall": 0.8567468145225783,
+    "f1": 0.855264908592565,
+    "roc_auc": 0.9388722617643975
+  },
+  "calibrated_test_tuned": {
+    "threshold": 0.46138675086131525,
+    "accuracy": 0.8533880684544437,
+    "precision": 0.8359093903613237,
+    "recall": 0.8794050221250733,
+    "f1": 0.8571057417511042,
+    "roc_auc": 0.9388722617643975
+  },
+  "best_threshold_base": 0.43566795527936186,
+  "best_threshold_calibrated": 0.46138675086131525
+}
