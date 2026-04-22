@@ -35,7 +35,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = Path(__file__).parent / "models"
-LR_MODEL_PATH = MODELS_DIR / "lr_model.pkl"
+LR_MODEL_PATH = MODELS_DIR / "lr_model_calibrated.pkl"  # Use calibrated model with Platt scaling
+LR_MODEL_PATH_FALLBACK = MODELS_DIR / "lr_model.pkl"  # Fallback to uncalibrated if calibrated unavailable
 
 # Global model references
 _roberta_model = None
@@ -77,11 +78,29 @@ def load_models() -> None:
 
     # 3. Load or create Logistic Regression model (always attempted — LR needs no torch)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Try calibrated model first (with Platt scaling), fallback to uncalibrated
     if LR_MODEL_PATH.exists():
         try:
             _lr_model = joblib.load(LR_MODEL_PATH)
             _using_dummy_lr = False
-            logger.info(f"Loaded Logistic Regression from {LR_MODEL_PATH}")
+            logger.info(f"Loaded Calibrated Logistic Regression from {LR_MODEL_PATH}")
+        except Exception as e:
+            logger.warning(f"Calibrated LR model load failed: {e}, trying fallback...")
+            if LR_MODEL_PATH_FALLBACK.exists():
+                try:
+                    _lr_model = joblib.load(LR_MODEL_PATH_FALLBACK)
+                    _using_dummy_lr = False
+                    logger.info(f"Loaded fallback Logistic Regression from {LR_MODEL_PATH_FALLBACK}")
+                except Exception as e2:
+                    logger.warning(f"Fallback LR model load failed: {e2}")
+            else:
+                logger.warning("LR model unavailable — using statistical heuristics only.")
+    elif LR_MODEL_PATH_FALLBACK.exists():
+        try:
+            _lr_model = joblib.load(LR_MODEL_PATH_FALLBACK)
+            _using_dummy_lr = False
+            logger.info(f"Loaded Logistic Regression from {LR_MODEL_PATH_FALLBACK}")
         except Exception as e:
             logger.warning(f"LR model load failed: {e}")
 
@@ -108,19 +127,89 @@ def is_dummy_lr() -> bool:
     return _using_dummy_lr
 
 
+def _count_formal_words(text: str) -> float:
+    """Ratio of formal/academic vocabulary."""
+    formal_words = {
+        'however', 'therefore', 'thus', 'moreover', 'furthermore',
+        'consequently', 'henceforth', 'methodology', 'hypothesis',
+        'implementation', 'analysis', 'evaluation', 'framework',
+        'significant', 'substantial', 'negligible', 'phenomenon',
+        'investigation', 'systematic', 'rigorous', 'comprehensive',
+    }
+    words = [w.lower() for w in text.split()]
+    if not words:
+        return 0.0
+    formal_count = sum(1 for w in words if w in formal_words)
+    return formal_count / len(words)
+
+
+def _count_citations(text: str) -> float:
+    """Estimate citation/reference density."""
+    citation_patterns = ['et al.', 'et al', 'et al,', '[1]', '[2]', 'ref.', 'reference',
+                         'references', 'doi:', 'arxiv:', 'doi 10', '(smith', '(jones',
+                         '(2020', '(2021', '(2022', '(2023', '(2024', '(2025', '(2026']
+    count = sum(text.lower().count(pattern) for pattern in citation_patterns)
+    # Normalize by text length
+    return min(count / max(len(text), 1) * 100, 1.0)
+
+
+def _count_technical_terms(text: str) -> float:
+    """Ratio of technical/domain-specific terms."""
+    technical_terms = {
+        'algorithm', 'benchmark', 'dataset', 'validation', 'accuracy',
+        'precision', 'recall', 'f1', 'f1-score', 'entropy', 'regression',
+        'classification', 'optimization', 'convergence', 'gradient',
+        'neural', 'network', 'layer', 'activation', 'weight', 'bias',
+        'transformer', 'attention', 'embedding', 'tokenization',
+    }
+    words = [w.lower() for w in text.split()]
+    if not words:
+        return 0.0
+    tech_count = sum(1 for w in words if w in technical_terms)
+    return tech_count / len(words)
+
+
+def _count_passive_voice(text: str) -> float:
+    """Approximate passive voice ratio."""
+    passive_markers = ['was ', 'were ', 'been ', 'is ', 'are ', 'being ']
+    sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.') if s.strip()]
+    if not sentences:
+        return 0.0
+    passive_count = sum(1 for s in sentences if any(marker in s.lower() for marker in passive_markers))
+    return passive_count / len(sentences)
+
+
+def _count_complex_sentences(text: str) -> float:
+    """Ratio of complex sentences (multiple clauses)."""
+    clause_markers = [';', ' because ', ' although ', ' while ', ' when ', ' if ', ' since ', ' unless ']
+    sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.') if s.strip()]
+    if not sentences:
+        return 0.0
+    complex_count = sum(1 for s in sentences if any(marker in s.lower() for marker in clause_markers))
+    return complex_count / len(sentences)
+
+
 def extract_features(text: str) -> np.ndarray:
     """
     COMPONENT 1 — Statistical feature extractor
 
-    Computes 5 features from raw text:
+    Computes 13 features from raw text:
       0. Perplexity proxy (avg log prob using GPT-2, or word length variance if unavailable)
       1. Burstiness (variance of sentence lengths / mean sentence length)
       2. Type-Token Ratio (unique words / total words)
       3. Average sentence length (mean word count per sentence)
       4. Punctuation density (punctuation characters / total characters)
+      5. Entropy of word frequencies (semantic diversity)
+      6. Average word length (stylometric marker)
+      7. Named entity density approximation (capitalization patterns)
+      8. Formal vocabulary ratio (academic words)
+      9. Citation density (reference markers)
+      10. Technical term ratio (domain-specific vocabulary)
+      11. Passive voice ratio (grammatical structure)
+      12. Complex sentence ratio (syntactic complexity)
     """
     if not text.strip():
-        return np.zeros(5)
+        return np.zeros(13)
 
     # 1. Perplexity proxy (with fallback to word length variance)
     perplexity = 0.0
@@ -192,9 +281,17 @@ def extract_features(text: str) -> np.ndarray:
     capitalized_words = sum(1 for w in words if w and w[0].isupper())
     proper_noun_density = capitalized_words / max(total_words, 1)
 
+    # 9-13. Academic-specific features
+    formal_ratio = _count_formal_words(text)
+    citation_density = _count_citations(text)
+    tech_ratio = _count_technical_terms(text)
+    passive_ratio = _count_passive_voice(text)
+    complex_ratio = _count_complex_sentences(text)
+
     return np.array([
         perplexity, burstiness, ttr, avg_sent_len, punct_density,
-        word_entropy, avg_word_len, proper_noun_density
+        word_entropy, avg_word_len, proper_noun_density,
+        formal_ratio, citation_density, tech_ratio, passive_ratio, complex_ratio
     ])
 
 
@@ -290,9 +387,9 @@ def detect(chunks: list[str]) -> dict[str, Any]:
 
     avg_score = round(avg_score, 2)
 
-    if avg_score < 0.4:
+    if avg_score < 0.35:
         verdict = "human"
-    elif avg_score <= 0.7:
+    elif avg_score <= 0.65:
         verdict = "mixed"
     else:
         verdict = "ai_generated"

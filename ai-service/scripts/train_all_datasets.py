@@ -189,7 +189,7 @@ class MultiDatasetTrainer:
                 features = extract_features(text)
                 features_list.append(features)
             except Exception as e:
-                features_list.append(np.zeros(8))
+                features_list.append(np.zeros(13))
                 errors += 1
 
         print(f"  ✓ Extracted {len(features_list):,} feature vectors ({errors} errors)\n")
