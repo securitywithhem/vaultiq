@@ -1,0 +1,27 @@
+{
+  "w_roberta": 0.45,
+  "w_lr": 0.55,
+  "threshold": 0.4999999999999999,
+  "eval_samples": 2000,
+  "individual": {
+    "roberta_only": {
+      "accuracy": 0.9625,
+      "f1": 0.9621403331650682,
+      "auc": 0.991588
+    },
+    "lr_only": {
+      "accuracy": 0.921,
+      "f1": 0.9196337741607324,
+      "auc": 0.9800505
+    }
+  },
+  "ensemble_tuned": {
+    "w_roberta": 0.45,
+    "threshold": 0.4999999999999999,
+    "accuracy": 0.978,
+    "precision": 0.9877551020408163,
+    "recall": 0.968,
+    "f1": 0.9777777777777777,
+    "roc_auc": 0.997218
+  }
+}
