@@ -128,6 +128,10 @@ describe('POST /api/auth/login', () => {
   beforeEach(() => jest.clearAllMocks());
 
   const mockProfileLookup = (id = null) => {
+    supabaseAdmin.auth.admin.listUsers = jest.fn().mockResolvedValue({
+      data: { users: id ? [{ id, email: 'a@b.com' }] : [] },
+      error: null
+    });
     supabaseAdmin.from.mockReturnValue({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),

@@ -7,6 +7,7 @@
 
 const { supabaseAdmin } = require('./supabase');
 const { sendSecurityAlert } = require('./emailService');
+const logger = require('./logger');
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 15;
@@ -33,7 +34,7 @@ async function isAccountLocked(userId) {
 
     return data.attempts >= MAX_LOGIN_ATTEMPTS;
   } catch (err) {
-    console.error('[accountLockout.isAccountLocked]', err.message);
+    logger.error('[accountLockout.isAccountLocked]', err.message);
     return true; // Fix 10: fail closed — deny login if lockout state is unknown
   }
 }
@@ -77,9 +78,9 @@ async function recordFailedLogin(userId, userEmail) {
       );
     }
 
-    console.log(`[accountLockout] Recorded failed login attempt for user ${userId} (attempt ${attempts}/${MAX_LOGIN_ATTEMPTS})`);
+    logger.info(`[accountLockout] Recorded failed login attempt for user ${userId} (attempt ${attempts}/${MAX_LOGIN_ATTEMPTS})`);
   } catch (err) {
-    console.error('[accountLockout.recordFailedLogin]', err.message);
+    logger.error('[accountLockout.recordFailedLogin]', err.message);
   }
 }
 
@@ -90,9 +91,9 @@ async function clearFailedLogins(userId) {
       .update({ attempts: 0, last_attempt_at: new Date() })
       .eq('user_id', userId);
 
-    console.log(`[accountLockout] Cleared failed login attempts for user ${userId}`);
+    logger.info(`[accountLockout] Cleared failed login attempts for user ${userId}`);
   } catch (err) {
-    console.error('[accountLockout.clearFailedLogins]', err.message);
+    logger.error('[accountLockout.clearFailedLogins]', err.message);
   }
 }
 

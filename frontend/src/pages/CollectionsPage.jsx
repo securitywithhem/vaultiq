@@ -8,6 +8,9 @@ export default function CollectionsPage() {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,6 +27,26 @@ export default function CollectionsPage() {
       setLoading(false);
     }
   };
+
+  // Compute displayed collections based on search, filter, and sort
+  const displayedCollections = collections
+    .filter((col) => {
+      const matchesSearch = col.name.toLowerCase().includes(search.toLowerCase()) ||
+                           (col.description && col.description.toLowerCase().includes(search.toLowerCase()));
+      const matchesStatus = statusFilter === 'all' || col.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'oldest':
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case 'most-submissions':
+          return b.submissionCount - a.submissionCount;
+        case 'newest':
+        default:
+          return new Date(b.createdAt) - new Date(a.createdAt);
+      }
+    });
 
   const copyLink = (e, shareCode) => {
     e.stopPropagation();
@@ -55,17 +78,55 @@ export default function CollectionsPage() {
           </button>
         </div>
 
+        {/* Filter bar */}
+        {collections.length > 0 && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <input
+                type="text"
+                placeholder="Search collections..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full px-4 py-2 bg-black border border-gray-800 rounded-lg text-white text-sm placeholder-gray-600 focus:border-violet-500 outline-none"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2 bg-black border border-gray-800 rounded-lg text-white text-sm focus:border-violet-500 outline-none"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="closed">Closed</option>
+              <option value="archived">Archived</option>
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2 bg-black border border-gray-800 rounded-lg text-white text-sm focus:border-violet-500 outline-none"
+            >
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="most-submissions">Most Submissions</option>
+            </select>
+          </div>
+        )}
+
         {error && (
           <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 mb-6">{error}</div>
         )}
 
-        {collections.length === 0 ? (
+        {displayedCollections.length === 0 && collections.length > 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No collections match your search.</p>
+          </div>
+        ) : collections.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">No collections yet. Create one to get started.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {collections.map((col) => (
+            {displayedCollections.map((col) => (
               <motion.div
                 key={col.id}
                 initial={{ opacity: 0, y: 10 }}

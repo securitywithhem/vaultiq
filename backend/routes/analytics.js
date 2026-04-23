@@ -50,14 +50,22 @@ async function readFromHDFS() {
     responseType: 'text',
   });
 
-  return JSON.parse(res.data);
+  try {
+    return JSON.parse(res.data);
+  } catch (parseErr) {
+    throw new Error(`HDFS response is not valid JSON: ${parseErr.message}`);
+  }
 }
 
 // ─── Tier 2 — Local file ──────────────────────────────────────────────────────
 
 function readFromLocal() {
   const raw = fs.readFileSync(LOCAL_RESULTS_FILE, 'utf8');
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch (parseErr) {
+    throw new Error(`Local analytics file is not valid JSON: ${parseErr.message}`);
+  }
 }
 
 // ─── Tier 3 — Supabase live analytics ────────────────────────────────────────
@@ -398,7 +406,14 @@ router.post('/trigger', authenticateToken, (req, res) => {
   }
 
   const child = spawn('bash', [SCRIPT_PATH], {
-    env:      { ...process.env },
+    env: {
+      PATH:             process.env.PATH,
+      HOME:             process.env.HOME,
+      TMPDIR:           process.env.TMPDIR || '/tmp',
+      PYTHON:           process.env.PYTHON,
+      HDFS_WEBHDFS_URL: process.env.HDFS_WEBHDFS_URL,
+      HDFS_USER:        process.env.HDFS_USER,
+    },
     detached: true,
     stdio:    ['ignore', 'pipe', 'pipe'],
   });

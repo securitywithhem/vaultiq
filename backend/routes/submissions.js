@@ -8,6 +8,7 @@ const { supabase } = require("../data/supabaseClient");
 const { uploadToS3 } = require("../utils/collectionHelpers");
 const { processDetectionsAsync } = require("../utils/detectionHelper");
 const { logEvent } = require("../utils/hdfsLogger");
+const logger = require("../utils/logger");
 const axios = require("axios");
 
 const router = express.Router();
@@ -54,12 +55,6 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
     } = req.body;
     const files = req.files || [];
 
-    console.log('📤 POST /share/:shareCode/submit received');
-    console.log('   Share code:', shareCode);
-    console.log('   Student name:', student_name);
-    console.log('   Student email:', student_email);
-    console.log('   Files count:', files.length);
-
     if (!student_name || student_name.trim() === "") {
       return res.status(400).json({ error: "Student name is required" });
     }
@@ -87,6 +82,15 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
       return res.status(410).json({ error: "Collection submission deadline has passed" });
     }
 
+    // MIME type mapping for validation
+    const EXTENSION_MIME_MAP = {
+      pdf: ['application/pdf'],
+      docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      txt: ['text/plain'],
+      md: ['text/plain', 'text/markdown'],
+      rtf: ['application/rtf', 'text/rtf'],
+    };
+
     // File size + type validation
     const maxBytes = (collection.max_file_size_mb || 25) * 1024 * 1024;
     const allowedTypes = (collection.allowed_types || ["pdf", "docx", "txt"]).map((t) => t.toLowerCase());
@@ -96,10 +100,28 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
           error: `File "${file.originalname}" exceeds ${collection.max_file_size_mb}MB limit`,
         });
       }
-      const ext = (file.originalname.split(".").pop() || "").toLowerCase();
+      const parts = file.originalname.split('.');
+      const ext = (parts[parts.length - 1] || "").toLowerCase();
+
+      // Check extension
       if (!allowedTypes.includes(ext)) {
         return res.status(415).json({
           error: `File type ".${ext}" is not allowed. Allowed: ${allowedTypes.join(", ")}`,
+        });
+      }
+
+      // Check for double extensions (security: prevent polyglot files)
+      if (parts.length > 2) {
+        return res.status(415).json({
+          error: 'Files with multiple extensions are not allowed',
+        });
+      }
+
+      // Validate MIME type matches extension
+      const allowedMimes = EXTENSION_MIME_MAP[ext] || [];
+      if (allowedMimes.length > 0 && !allowedMimes.includes(file.mimetype)) {
+        return res.status(415).json({
+          error: `File MIME type mismatch for ".${ext}" files`,
         });
       }
     }
@@ -155,7 +177,7 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
       .single();
 
     if (subError) {
-      console.error("Submission insert error:", subError);
+      logger.error("Submission insert error:", subError);
       return res.status(500).json({ error: "Failed to save submission" });
     }
 
@@ -172,7 +194,7 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
       .insert(detectionRecords);
 
     if (detError) {
-      console.error("Detection record insert error:", detError);
+      logger.error("Detection record insert error:", detError);
       return res.status(500).json({ error: "Failed to create detection records" });
     }
 
@@ -206,7 +228,7 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
       files_count: files.length,
     });
   } catch (error) {
-    console.error("POST /share/:shareCode/submit error:", error);
+    logger.error("POST /share/:shareCode/submit error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -219,10 +241,6 @@ router.post("/:shareCode/submit", handleUpload, async (req, res) => {
 router.get("/:shareCode", async (req, res) => {
   try {
     const { shareCode } = req.params;
-    console.log('🔍 GET /share/:shareCode requested');
-    console.log('   Share code:', shareCode);
-    console.log('   Share code type:', typeof shareCode);
-    console.log('   Share code length:', shareCode?.length);
 
     const { data, error } = await supabase
       .from("collections")
@@ -231,21 +249,14 @@ router.get("/:shareCode", async (req, res) => {
       .single();
 
     if (error) {
-      console.error('❌ Query error:', error);
-      console.error('   Error code:', error.code);
-      console.error('   Error message:', error.message);
       return res.status(404).json({ error: "Collection not found" });
     }
 
     if (!data) {
-      console.error('❌ No data returned from query');
       return res.status(404).json({ error: "Collection not found" });
     }
 
-    console.log('✅ Collection found:', data.id, data.name);
-
     if (data.status !== "active") {
-      console.warn('⚠️  Collection status is not active:', data.status);
       return res.status(410).json({ error: "Collection is no longer accepting submissions" });
     }
 
@@ -264,11 +275,10 @@ router.get("/:shareCode", async (req, res) => {
       allowedTypes: data.allowed_types || ["pdf", "docx", "txt"],
       deadline: data.expires_at || null,
     };
-    console.log('📤 Sending collection info:', responseData);
     res.json(responseData);
   } catch (error) {
-    console.error("❌ GET /share/:shareCode error:", error);
-    console.error("   Stack:", error.stack);
+    logger.error("❌ GET /share/:shareCode error:", error);
+    logger.error("   Stack:", error.stack);
     res.status(500).json({ error: "Internal server error" });
   }
 });

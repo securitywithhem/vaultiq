@@ -75,6 +75,18 @@ router.post('/', authenticateToken, upload.array('files', 5), async (req, res) =
       return res.status(400).json({ error: 'No files uploaded' });
     }
 
+    // MIME type validation for AI detection
+    const ALLOWED_AI_MIME = new Set(['application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain']);
+
+    for (const f of req.files) {
+      const ext = path.extname(f.originalname).toLowerCase();
+      if (!['.pdf', '.docx', '.txt'].includes(ext) || !ALLOWED_AI_MIME.has(f.mimetype)) {
+        return res.status(415).json({ error: `File type not allowed: ${f.originalname}` });
+      }
+    }
+
     const fileBuffers = req.files.map(f => ({
       buffer:   f.buffer,
       filename: f.originalname,
@@ -89,7 +101,6 @@ router.post('/', authenticateToken, upload.array('files', 5), async (req, res) =
       return res.status(503).json({
         error: 'AI Service is currently unavailable.',
         details: process.env.NODE_ENV === 'development' ? axErr.message : 'Please try again later',
-        service_url: process.env.AI_SERVICE_URL,
       });
     }
 
@@ -203,7 +214,6 @@ router.post('/from-vault', authenticateToken, async (req, res) => {
         return res.status(503).json({
           error: 'AI Service is currently unavailable.',
           details: process.env.NODE_ENV === 'development' ? axErr.message : 'Please try again later',
-          service_url: process.env.AI_SERVICE_URL,
         });
       }
     }
@@ -240,6 +250,10 @@ router.post('/check', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Text content cannot be empty' });
     }
 
+    if (text.length > 50_000) {
+      return res.status(413).json({ error: 'Text too large (max 50,000 characters)' });
+    }
+
     const response = await axios.post(`${AI_SERVICE_URL}/detect/text`, {
       text,
       document_id: req.id || 'AI detection',
@@ -271,6 +285,14 @@ router.get('/history', authenticateToken, (req, res) => {
 router.post('/add', authenticateToken, async (req, res) => {
   try {
     const { doc_id, text } = req.body;
+
+    if (!doc_id || typeof doc_id !== 'string' || doc_id.length > 128) {
+      return res.status(400).json({ error: 'doc_id must be a string (max 128 chars)' });
+    }
+    if (!text || typeof text !== 'string' || text.length > 50_000) {
+      return res.status(400).json({ error: 'text must be a non-empty string (max 50,000 chars)' });
+    }
+
     const response = await axios.post(`${AI_SERVICE_URL}/analysis/add`, {
       doc_id, text, title: '',
     }, { timeout: 15_000 });

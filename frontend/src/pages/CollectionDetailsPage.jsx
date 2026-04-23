@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import CollectionSummary from '../components/CollectionSummary';
 import SubmissionList from '../components/SubmissionList';
+import CollectionAnalytics from '../components/CollectionAnalytics';
+import SubmissionPreviewPane from '../components/SubmissionPreviewPane';
+import EditCollectionModal from '../components/EditCollectionModal';
 import api from '../services/api';
 
 export default function CollectionDetailsPage() {
@@ -11,6 +15,9 @@ export default function CollectionDetailsPage() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('submissions');
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -52,6 +59,78 @@ export default function CollectionDetailsPage() {
     }
   };
 
+  const handleStatusChange = async (submissionId, status) => {
+    try {
+      const { updateSubmissionStatus } = await import('../api/collectionsApi');
+      await updateSubmissionStatus(id, submissionId, status);
+      toast.success('Status updated');
+      await fetchData();
+    } catch (err) {
+      setError('Failed to update submission status');
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleBulkDetect = async (submissionIds) => {
+    try {
+      await api.post(`/api/collections/${id}/detect`, { submissionIds });
+      toast.success('Detection started');
+      await fetchData();
+    } catch (err) {
+      setError('Failed to trigger detection');
+      toast.error('Failed to start detection');
+    }
+  };
+
+  const handleBulkStatusChange = async (submissionIds, status) => {
+    try {
+      const { bulkUpdateSubmissionStatus } = await import('../api/collectionsApi');
+      await bulkUpdateSubmissionStatus(id, submissionIds, status);
+      toast.success(`Updated ${submissionIds.length} submissions`);
+      await fetchData();
+    } catch (err) {
+      setError('Failed to update submissions');
+      toast.error('Failed to update submissions');
+    }
+  };
+
+  const handleBulkDelete = async (submissionIds) => {
+    if (!window.confirm(`Delete ${submissionIds.length} submission(s)? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      const { bulkDeleteSubmissions } = await import('../api/collectionsApi');
+      await bulkDeleteSubmissions(id, submissionIds);
+      toast.success(`Deleted ${submissionIds.length} submissions`);
+      await fetchData();
+    } catch (err) {
+      setError('Failed to delete submissions');
+      toast.error('Failed to delete submissions');
+    }
+  };
+
+  // Get selected submission object
+  const selectedSubmission = submissions.find((s) => s.id === selectedSubmissionId);
+
+  // Get index for navigation
+  const selectedIndex = submissions.findIndex((s) => s.id === selectedSubmissionId);
+
+  const handleNextSubmission = () => {
+    if (selectedIndex < submissions.length - 1) {
+      setSelectedSubmissionId(submissions[selectedIndex + 1].id);
+    }
+  };
+
+  const handlePreviousSubmission = () => {
+    if (selectedIndex > 0) {
+      setSelectedSubmissionId(submissions[selectedIndex - 1].id);
+    }
+  };
+
+  const handleSelectSubmission = (submissionId) => {
+    setSelectedSubmissionId(submissionId);
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin" /></div>;
   }
@@ -65,7 +144,15 @@ export default function CollectionDetailsPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">{collection.name}</h1>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-4xl font-bold text-white">{collection.name}</h1>
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg hover:bg-gray-700 transition"
+            >
+              ⚙️ Edit Settings
+            </button>
+          </div>
           <p className="text-gray-400 mb-4">{collection.description}</p>
           <div className="flex gap-4">
             <span className="text-sm text-gray-500">Auto-detect: {collection.autoDetectEnabled ? 'ON' : 'OFF'}</span>
@@ -100,24 +187,99 @@ export default function CollectionDetailsPage() {
         {/* Summary */}
         <CollectionSummary submissions={submissions} />
 
-        {/* Bulk Actions */}
-        <div className="mb-6 flex gap-4">
+        {/* Tab Bar */}
+        <div className="mb-6 flex gap-2 border-b border-gray-800">
           <button
-            onClick={handleRunAllDetection}
-            className="px-6 py-2 bg-violet-600 text-white font-bold rounded-xl hover:scale-105 transition-transform"
+            onClick={() => setActiveTab('submissions')}
+            className={`px-4 py-3 font-bold transition-colors ${
+              activeTab === 'submissions'
+                ? 'text-violet-400 border-b-2 border-violet-400'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
           >
-            Run All Detections
+            Submissions ({submissions.length})
           </button>
           <button
-            onClick={() => downloadCSV(submissions)}
-            className="px-6 py-2 bg-gray-800 text-white font-bold rounded-xl hover:bg-gray-700 transition"
+            onClick={() => setActiveTab('analytics')}
+            className={`px-4 py-3 font-bold transition-colors ${
+              activeTab === 'analytics'
+                ? 'text-violet-400 border-b-2 border-violet-400'
+                : 'text-gray-500 hover:text-gray-300'
+            }`}
           >
-            Download CSV
+            Analytics
           </button>
         </div>
 
-        {/* Submissions Table */}
-        <SubmissionList submissions={submissions} onRunDetection={handleRunDetection} />
+        {/* Submissions Tab */}
+        {activeTab === 'submissions' && (
+          <>
+            {/* Bulk Actions */}
+            <div className="mb-6 flex gap-4">
+              <button
+                onClick={handleRunAllDetection}
+                className="px-6 py-2 bg-violet-600 text-white font-bold rounded-xl hover:scale-105 transition-transform"
+              >
+                Run All Detections
+              </button>
+              <button
+                onClick={() => downloadCSV(submissions)}
+                className="px-6 py-2 bg-gray-800 text-white font-bold rounded-xl hover:bg-gray-700 transition"
+              >
+                Download CSV
+              </button>
+            </div>
+
+            {/* Split View: List + Preview */}
+            <div className="flex gap-6 h-[calc(100vh-400px)] bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+              {/* Left: Submissions List */}
+              <div
+                className={`overflow-y-auto ${
+                  selectedSubmission ? 'w-1/3' : 'w-full'
+                } transition-all duration-300`}
+              >
+                <SubmissionList
+                  submissions={submissions}
+                  onRunDetection={handleRunDetection}
+                  onStatusChange={handleStatusChange}
+                  onBulkDetect={handleBulkDetect}
+                  onBulkStatusChange={handleBulkStatusChange}
+                  onBulkDelete={handleBulkDelete}
+                  selectedSubmissionId={selectedSubmissionId}
+                  onSelectSubmission={handleSelectSubmission}
+                />
+              </div>
+
+              {/* Right: Preview Pane */}
+              {selectedSubmission && (
+                <SubmissionPreviewPane
+                  submission={selectedSubmission}
+                  onStatusChange={handleStatusChange}
+                  onClose={() => setSelectedSubmissionId(null)}
+                  onNext={handleNextSubmission}
+                  onPrevious={handlePreviousSubmission}
+                  hasNext={selectedIndex < submissions.length - 1}
+                  hasPrevious={selectedIndex > 0}
+                />
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Analytics Tab */}
+        {activeTab === 'analytics' && <CollectionAnalytics submissions={submissions} />}
+
+        {/* Edit Modal */}
+        {showEditModal && (
+          <EditCollectionModal
+            collection={collection}
+            onSuccess={() => {
+              setShowEditModal(false);
+              fetchData();
+            }}
+            onCancel={() => setShowEditModal(false)}
+          />
+        )}
       </div>
     </div>
   );

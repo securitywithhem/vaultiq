@@ -76,7 +76,7 @@ async function callAIDetection(fileBuffer, filename) {
 
   try {
     const form = new FormData();
-    form.append("file", fileBuffer, filename);
+    form.append("files", fileBuffer, filename);
 
     const response = await axios.post(
       `${process.env.AI_SERVICE_URL || process.env.FASTAPI_URL}/detect`,
@@ -88,12 +88,14 @@ async function callAIDetection(fileBuffer, filename) {
     );
 
     console.log(`✓ AI detection completed for ${filename}`);
+    // Handle wrapped response format: {results: [{...}]}
+    const result = Array.isArray(response.data.results) ? response.data.results[0] : response.data;
     return {
-      ai_score: response.data.score || response.data.ai_score || 0,
-      verdict: response.data.verdict || "human",
-      confidence: response.data.confidence || "low",
-      chunk_scores: response.data.chunk_scores || response.data.chunks || [],
-      similarity_score: response.data.similarity_score || 0,
+      ai_score: result.score || result.ai_score || 0,
+      verdict: result.verdict || "human",
+      confidence: result.confidence || "low",
+      chunk_scores: result.chunk_scores || result.chunks || [],
+      similarity_score: result.similarity_score || 0,
     };
   } catch (error) {
     console.error("FastAPI detection error:", error.message);
