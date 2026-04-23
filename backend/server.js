@@ -40,6 +40,28 @@ if (process.env.ENCRYPTION_KEY.length !== 64) {
   process.exit(1);
 }
 
+if (!/^[0-9a-f]{64}$/i.test(process.env.ENCRYPTION_KEY)) {
+  logger.error('ENCRYPTION_KEY must be valid 64-character hexadecimal');
+  process.exit(1);
+}
+
+if (process.env.JWT_SECRET.length < 32) {
+  logger.error('JWT_SECRET must be at least 32 characters');
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  try {
+    const supabaseUrl = new URL(process.env.SUPABASE_URL);
+    if (!supabaseUrl.protocol.startsWith('https')) {
+      throw new Error('Must use HTTPS');
+    }
+  } catch {
+    logger.error('SUPABASE_URL must be a valid HTTPS URL');
+    process.exit(1);
+  }
+}
+
 // ─── Express App ─────────────────────────────────────────────────────
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -95,7 +117,7 @@ app.use(cors({
 app.use(require('compression')());
 app.use(cookieParser());
 app.use(requestIdMiddleware);
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '1mb' }));
 
 // NOTE: csurf removed — CSRF is mitigated by SameSite=Strict cookies + CORS origin check.
 // All mutating routes require authenticateToken (JWT in HttpOnly cookie).
@@ -108,6 +130,9 @@ const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, skipSuccessfulRequests: true });
 const uploadLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 100 });
 const fileLimiter = rateLimit({ windowMs: 60 * 1000, max: 60 });
+const collectionsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+const analyticsLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20 });
+const submissionsLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30 });
 
 // ─── Apply Global Rate Limiter ──────────────────────────────────────
 app.use('/api/', applyRateLimit(globalLimiter));
@@ -115,10 +140,10 @@ app.use('/api/', applyRateLimit(globalLimiter));
 // ─── Route Mounts ───────────────────────────────────────────────────
 app.use('/api/auth', applyRateLimit(authLimiter), authRoutes);
 app.use('/api/files', applyRateLimit(fileLimiter), filesRoutes);
-app.use('/api/analytics', analyticsRoutes);
+app.use('/api/analytics', applyRateLimit(analyticsLimiter), analyticsRoutes);
 app.use('/api/ai-detect', applyRateLimit(uploadLimiter), aiDetectionRoutes);
-app.use('/api/collections', collectionsRouter);
-app.use('/api/share', submissionsRouter); // For /api/share/:code endpoints
+app.use('/api/collections', applyRateLimit(collectionsLimiter), collectionsRouter);
+app.use('/api/share', applyRateLimit(submissionsLimiter), submissionsRouter); // For /api/share/:code endpoints
 
 // ─── System Endpoints ───────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

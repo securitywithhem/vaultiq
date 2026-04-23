@@ -127,6 +127,174 @@
       "verdict": "ai_generated",
       "score": 0.77,
       "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:07:35.024Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Hem_23000858_Lab_11.docx",
+      "verdict": "human",
+      "score": 0.31,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:08:02.928Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_lab4.docx",
+      "verdict": "mixed",
+      "score": 0.39,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:08:02.928Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "23000858_Hem_Lab5.pdf",
+      "verdict": "human",
+      "score": 0.3,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:08:02.928Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab_4_____Deep_Web_surfing.docx",
+      "verdict": "mixed",
+      "score": 0.38,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:08:02.928Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab_1_-_Passive_Domain___Network_Information_Gathering.docx",
+      "verdict": "human",
+      "score": 0.34,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:08:02.928Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Lab_2_-_Packet_Sniffer.docx",
+      "verdict": "human",
+      "score": 0.32,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:09:17.483Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Silver_Plated_Busbar_Manufacturing_Guide_2.docx",
+      "verdict": "mixed",
+      "score": 0.44,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:09:33.898Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Hem_23000858_Lab_11.docx",
+      "verdict": "human",
+      "score": 0.31,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:09:33.898Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Silver_Plated_Busbar_Manufacturing_Guide_2.docx",
+      "verdict": "mixed",
+      "score": 0.44,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:30:29.799Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Silver_Plated_Busbar_Manufacturing_Guide_2.docx",
+      "verdict": "mixed",
+      "score": 0.44,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:39:33.884Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "Silver_Plated_Busbar_Manufacturing_Guide_2.docx",
+      "verdict": "mixed",
+      "score": 0.44,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:55:30.253Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "1_Human_Written.docx",
+      "verdict": "mixed",
+      "score": 0.42,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:55:30.253Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "2_Mixed_Content.docx",
+      "verdict": "human",
+      "score": 0.17,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:55:30.253Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "3_AI_Generated.pdf",
+      "verdict": "human",
+      "score": 0.1,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:56:07.036Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "1_Human_Written.pdf",
+      "verdict": "mixed",
+      "score": 0.41,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:56:07.036Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "2_Mixed_Content.docx",
+      "verdict": "human",
+      "score": 0.17,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:56:07.036Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "2_Mixed_Content.pdf",
+      "verdict": "human",
+      "score": 0.16,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:56:07.036Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "3_AI_Generated.docx",
+      "verdict": "human",
+      "score": 0.11,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:56:07.036Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "3_AI_Generated.pdf",
+      "verdict": "human",
+      "score": 0.1,
+      "confidence": "medium"
+    },
+    {
+      "timestamp": "2026-04-23T18:57:47.815Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "1_Human_Written.docx",
+      "verdict": "mixed",
+      "score": 0.42,
+      "confidence": "high"
+    },
+    {
+      "timestamp": "2026-04-23T18:57:47.815Z",
+      "user_id": "8fb3c93c-1dfe-42bd-aa28-042e458636b3",
+      "filename": "3_AI_Generated.pdf",
+      "verdict": "human",
+      "score": 0.1,
+      "confidence": "medium"
     }
   ]
 }
