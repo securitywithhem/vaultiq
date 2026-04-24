@@ -42,20 +42,22 @@ ENSEMBLE_CONFIG_PATH = MODELS_DIR / "ensemble_config.json"
 # Ensemble blend weights — overwritten at load time from ENSEMBLE_CONFIG_PATH if present.
 _W_ROBERTA: float = 0.7
 _W_LR: float = 0.3
+_DETECT_THRESHOLD: float = 0.55  # Loaded from ensemble_config.json at startup
 
 # Global model references
-_roberta_model = None
-_roberta_tokenizer = None
+_roberta_models: list = []   # list of (tokenizer, model, ai_idx) tuples
+_roberta_model = None        # legacy compat ref (last loaded)
+_roberta_tokenizer = None    # legacy compat ref (last loaded)
 _lr_model = None
 _gpt2_model = None
 _gpt2_tokenizer = None
-_using_dummy_lr: bool = False  # Fix 4: track whether LR is real or dummy
+_using_dummy_lr: bool = False
 
 
 def load_models() -> None:
     """Pre-load all required models for the ensemble."""
     global _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr, _gpt2_model, _gpt2_tokenizer
-    global _W_ROBERTA, _W_LR
+    global _W_ROBERTA, _W_LR, _DETECT_THRESHOLD, _roberta_models
 
     start_time = time.time()
 
@@ -67,7 +69,8 @@ def load_models() -> None:
                 _cfg = _json.load(_f)
             _W_ROBERTA = float(_cfg.get("w_roberta", _W_ROBERTA))
             _W_LR = float(_cfg.get("w_lr", _W_LR))
-            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f}")
+            _DETECT_THRESHOLD = float(_cfg.get("threshold", _DETECT_THRESHOLD))
+            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f} threshold={_DETECT_THRESHOLD:.3f}")
         except Exception as e:
             logger.warning(f"Failed to load ensemble_config.json: {e}")
 
@@ -76,11 +79,35 @@ def load_models() -> None:
     else:
         logger.info("Loading NLP models. This might take a moment...")
         try:
-            # 1. Load RoBERTa for text classification
-            roberta_name = "roberta-base-openai-detector"
-            _roberta_tokenizer = AutoTokenizer.from_pretrained(roberta_name)
-            _roberta_model = AutoModelForSequenceClassification.from_pretrained(roberta_name)
-            _roberta_model.eval()
+            # 1. Load RoBERTa checkpoints for text classification.
+            # We use TWO checkpoints and average their AI probabilities:
+            #   - Hello-SimpleAI/chatgpt-detector-roberta: trained on ChatGPT outputs (modern)
+            #   - roberta-base-openai-detector: trained on GPT-2 outputs (catches older style)
+            # Together they cover a wider range of model families.
+            roberta_candidates = [
+                "Hello-SimpleAI/chatgpt-detector-roberta",
+                "roberta-base-openai-detector",
+            ]
+            _roberta_models = []
+            for roberta_name in roberta_candidates:
+                try:
+                    tok = AutoTokenizer.from_pretrained(roberta_name)
+                    mdl = AutoModelForSequenceClassification.from_pretrained(roberta_name)
+                    mdl.eval()
+                    # Determine AI label index for this checkpoint
+                    id2label = getattr(mdl.config, "id2label", {})
+                    ai_strs = {"fake", "chatgpt", "ai", "generated", "machine"}
+                    ai_idx = 0
+                    for idx, lbl in id2label.items():
+                        if any(s in str(lbl).lower() for s in ai_strs):
+                            ai_idx = int(idx)
+                            break
+                    _roberta_models.append((tok, mdl, ai_idx))
+                    _roberta_tokenizer = tok   # legacy compat
+                    _roberta_model = mdl       # legacy compat
+                    logger.info(f"Loaded RoBERTa checkpoint: {roberta_name} (AI idx={ai_idx})")
+                except Exception as _inner:
+                    logger.warning(f"Skipped {roberta_name}: {_inner}")
         except Exception as e:
             logger.warning(f"RoBERTa load failed: {e}")
 
@@ -315,28 +342,36 @@ def extract_features(text: str) -> np.ndarray:
 
 def roberta_score(text: str) -> float:
     """
-    COMPONENT 2 — RoBERTa classifier
+    COMPONENT 2 — RoBERTa ensemble classifier
 
-    Returns probability [0, 1] for class 'Fake' (index 1).
+    Averages AI probabilities from ALL loaded RoBERTa checkpoints:
+      - Hello-SimpleAI/chatgpt-detector-roberta (ChatGPT-era, modern)
+      - roberta-base-openai-detector (GPT-2-era, legacy fallback)
+
+    Returns probability [0, 1] that text is AI-generated.
+    Returns 0.5 if no model is loaded (neutral score).
     """
     if not is_model_loaded():
         raise RuntimeError("Models are not loaded.")
 
-    try:
-        assert _roberta_tokenizer is not None, "Tokenizer not loaded"
-        assert _roberta_model is not None, "Model not loaded"
-        inputs = _roberta_tokenizer(
-            text, return_tensors="pt", truncation=True, max_length=512
-        )
-        with torch.no_grad():
-            outputs = _roberta_model(**inputs)
-            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-            # roberta-base-openai-detector: id2label = {0: 'Fake', 1: 'Real'}
-            fake_prob = probs[0][0].item()
-            return float(fake_prob)
-    except Exception as e:
-        logger.warning(f"RoBERTa scoring failed: {e}")
+    if not _roberta_models:
+        # No transformer loaded — fall back to neutral
         return 0.5
+
+    scores = []
+    for (tok, mdl, ai_idx) in _roberta_models:
+        try:
+            inputs = tok(text, return_tensors="pt", truncation=True, max_length=512)
+            with torch.no_grad():
+                outputs = mdl(**inputs)
+                probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+                scores.append(float(probs[0][ai_idx].item()))
+        except Exception as e:
+            logger.warning(f"RoBERTa scoring failed for one checkpoint: {e}")
+
+    if not scores:
+        return 0.5
+    return float(sum(scores) / len(scores))
 
 
 def lr_score(text: str) -> float:
@@ -363,9 +398,9 @@ def ensemble_score(text: str) -> float:
     """
     COMPONENT 4 — Meta ensemble
 
-    Weighted average: _W_ROBERTA * roberta + _W_LR * lr
-    Weights are tuned on a held-out set (see scripts/optimize_ensemble.py)
-    and loaded at startup from models/ensemble_config.json.
+    Weighted average: _W_ROBERTA * mean(roberta checkpoints) + _W_LR * lr
+    Weights and detection threshold are loaded at startup from
+    models/ensemble_config.json (w_roberta, w_lr, threshold).
     """
     r_score = roberta_score(text)
     l_score = lr_score(text)
@@ -406,9 +441,12 @@ def detect(chunks: list[str]) -> dict[str, Any]:
 
     avg_score = round(avg_score, 2)
 
-    if avg_score < 0.35:
+    # Use configurable threshold (loaded from ensemble_config.json at startup).
+    # human: score < threshold * 0.65,  mixed: up to threshold,  ai: >= threshold
+    human_ceiling = _DETECT_THRESHOLD * 0.65
+    if avg_score < human_ceiling:
         verdict = "human"
-    elif avg_score <= 0.65:
+    elif avg_score < _DETECT_THRESHOLD:
         verdict = "mixed"
     else:
         verdict = "ai_generated"
