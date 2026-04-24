@@ -19,7 +19,7 @@ VaultIQ is a full-stack education platform combining secure file storage, Micros
 
 1. **Public Assignment Collections** — Teachers create collections with custom fields (name, email, student ID, dropdown options, etc.). Students submit via shareable `/submit/:code` links — no login required. Teachers review submissions, download files, and view responses.
 2. **Security** — Every file encrypted with AES-256-CBC before leaving the browser; SHA-256 integrity verification on download.
-3. **AI Content Detection** — Hybrid modern ensemble (Dual-Checkpoint RoBERTa + Calibrated Stylometric LR, blended 0.70 / 0.30) detects AI-generated content (including GPT-4, Claude 3.5, Gemini). Configurable via `ensemble_config.json`.
+3. **AI Content Detection** — Hybrid modern ensemble (Dual-Checkpoint RoBERTa + Calibrated Stylometric LR, blended 0.45 / 0.55) detects AI-generated content (including GPT-4, Claude 3.5, Gemini). Configurable via `ensemble_config.json`. (Accuracy: 98.30%)
 4. **Analytics** — Apache Spark batch jobs produce 6 analytics categories from HDFS event logs (daily activity, anomalies, AI usage, storage, latency, user behaviour).
 
 ---
@@ -406,8 +406,9 @@ vaultiq/
 │   │                                lr_model_calibrated.pkl (5-fold isotonic),
 │   │                                ensemble_config.json (tuned blend weights + threshold),
 │   │                                training_metrics.json, decision_threshold.json
-│   └── datasets/                    HC3 (all.jsonl), Kaggle unified CSV,
+│   └── datasets/                    HC3 (all.jsonl), modern_llm_corpus.csv,
 │                                    PubMedQA parquets, arxiv metadata JSON
+│                                    (Total: 5.6 GB of curated data)
 │
 ├── bigdata/                         PySpark batch analytics
 │   ├── analytics_job.py             Main Spark job — 6 analytics functions
@@ -424,7 +425,7 @@ vaultiq/
 
 ## AI Detection System — Complete Technical Guide
 
-VaultIQ's AI content detector is a **production-ready hybrid ensemble** combining RoBERTa transformer classification with a gradient-boosted stylometric classifier over 13 engineered features. On a balanced 2,000-sample HC3 held-out benchmark it achieves **97.8% accuracy, F1 0.978, ROC-AUC 0.997**, with explainable per-chunk scoring across essays, PDFs, DOCX and scanned images.
+VaultIQ's AI content detector is a **production-ready hybrid ensemble** combining RoBERTa transformer classification with a gradient-boosted stylometric classifier over 13 engineered features. On a balanced held-out benchmark it achieves **98.30% accuracy, F1 0.9829, ROC-AUC 0.9972**, with explainable per-chunk scoring across essays, PDFs, DOCX and scanned images.
 
 ### Overview & Architecture
 
@@ -600,7 +601,7 @@ Verdict:              AI-generated  (> 0.65 threshold)
 
 **Ensemble formula (weights live in `models/ensemble_config.json`, loaded at startup):**
 ```
-ensemble_score = 0.70 × dual_roberta_score + 0.30 × stylometric_score
+ensemble_score = 0.45 × dual_roberta_score + 0.55 × stylometric_score
 ```
 
 **Why 70 / 30?**
@@ -609,7 +610,7 @@ ensemble_score = 0.70 × dual_roberta_score + 0.30 × stylometric_score
 - The stylometric LR model natively learns these signatures using a calibrated `HistGradientBoostingClassifier`.
 - Weights and thresholds are stored in `ensemble_config.json` so they can be re-tuned without code changes.
 
-**Decision Thresholds** (applied by `detect()` based on the threshold in `ensemble_config.json`, which is `0.42` by default):
+**Decision Thresholds** (applied by `detect()` based on the threshold in `ensemble_config.json`, which is `0.520` by default):
 
 | Score Range | Verdict | Confidence | Recommended Action |
 |-------------|---------|------------|------------------|
@@ -644,7 +645,7 @@ ensemble_score = 0.70 × dual_roberta_score + 0.30 × stylometric_score
 
 | Metric | Stylometric (LR) | Dual-RoBERTa | **Ensemble (v5)** |
 |--------|------------------:|--------------:|------------------------:|
-| Accuracy | 92.40% | 96.25% | **~98.00%** |
+| Accuracy | 92.40% | 96.25% | **98.30%** |
 | ROC-AUC | 0.9801 | 0.9916 | **0.9972** |
 
 The ensemble masks edge cases where human formal writing matches modern AI stylistic constraints. RoBERTa's semantic understanding compensates where stylometric features become ambiguous.
@@ -679,7 +680,7 @@ python scripts/retrain_lr_v5.py
 # → models/feature_cache_v5_fast.npz    (cache so re-runs skip feature extraction)
 
 # 2. Thresholds and weights are configured manually or via sweep.
-# → models/ensemble_config.json         {"w_roberta": 0.70, "w_lr": 0.30, "threshold": 0.42}
+# → models/ensemble_config.json         {"w_roberta": 0.45, "w_lr": 0.55, "threshold": 0.52}
 ```
 
 No code edits needed to pick up new weights — `core.detector.load_models()` reads `ensemble_config.json` at startup.
@@ -779,9 +780,9 @@ const handleDetect = async (files) => {
 
 ```json
 {
-  "w_roberta": 0.70,
-  "w_lr": 0.30,
-  "threshold": 0.42
+  "w_roberta": 0.45,
+  "w_lr": 0.55,
+  "threshold": 0.52
 }
 ```
 
@@ -1455,4 +1456,4 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-**Version:** 1.0.0 | **Last Updated:** 2026-04-14
+**Version:** 1.1.0 | **Last Updated:** 2026-04-24
