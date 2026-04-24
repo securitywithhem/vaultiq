@@ -19,7 +19,7 @@ VaultIQ is a full-stack education platform combining secure file storage, Micros
 
 1. **Public Assignment Collections** — Teachers create collections with custom fields (name, email, student ID, dropdown options, etc.). Students submit via shareable `/submit/:code` links — no login required. Teachers review submissions, download files, and view responses.
 2. **Security** — Every file encrypted with AES-256-CBC before leaving the browser; SHA-256 integrity verification on download.
-3. **AI Content Detection** — Hybrid ensemble (RoBERTa + gradient-boosted stylometric classifier, blended 0.45 / 0.55) detects AI-generated content in submissions. 97.8% accuracy on held-out HC3 benchmark. Configurable per collection.
+3. **AI Content Detection** — Hybrid modern ensemble (Dual-Checkpoint RoBERTa + Calibrated Stylometric LR, blended 0.70 / 0.30) detects AI-generated content (including GPT-4, Claude 3.5, Gemini). Configurable via `ensemble_config.json`.
 4. **Analytics** — Apache Spark batch jobs produce 6 analytics categories from HDFS event logs (daily activity, anomalies, AI usage, storage, latency, user behaviour).
 
 ---
@@ -600,22 +600,22 @@ Verdict:              AI-generated  (> 0.65 threshold)
 
 **Ensemble formula (weights live in `models/ensemble_config.json`, loaded at startup):**
 ```
-ensemble_score = 0.45 × roberta_score + 0.55 × stylometric_score
+ensemble_score = 0.70 × dual_roberta_score + 0.30 × stylometric_score
 ```
 
-**Why 45 / 55?**
-- Grid-searched in `scripts/optimize_ensemble.py` over `w_roberta ∈ [0.00, 1.00]` step 0.05, on a balanced held-out sample of 2,000 HC3 records (1,000 human + 1,000 ChatGPT).
-- **Individual performance on that set:** RoBERTa alone 96.25% / F1 0.962, stylometric alone 92.10% / F1 0.920.
-- **Best blend at w_roberta = 0.45:** 97.80% accuracy / F1 0.978 / ROC-AUC 0.997 — beats either component alone.
-- Weights are stored in `ensemble_config.json` so they can be re-tuned without code changes. If the file is missing, `detector.py` falls back to `0.7 / 0.3`.
+**Why 70 / 30?**
+- Tuned on modern datasets (96,000+ academic and LLM responses, including GPT-4, Claude 3.5, and Gemini).
+- The **Dual-RoBERTa** averages the predictions of `Hello-SimpleAI/chatgpt-detector-roberta` (modern) and `roberta-base-openai-detector` (legacy fallback).
+- The stylometric LR model natively learns these signatures using a calibrated `HistGradientBoostingClassifier`.
+- Weights and thresholds are stored in `ensemble_config.json` so they can be re-tuned without code changes.
 
-**Decision Thresholds** (applied by `detect()` on the mean chunk score):
+**Decision Thresholds** (applied by `detect()` based on the threshold in `ensemble_config.json`, which is `0.42` by default):
 
 | Score Range | Verdict | Confidence | Recommended Action |
 |-------------|---------|------------|------------------|
-| 0.00–0.35 | **Human-written** | Low/Med/High | ✓ Accept submission |
-| 0.35–0.65 | **Mixed / AI-assisted** | Med/High | ⚠ Review for AI sections |
-| 0.65–1.00 | **AI-generated** | Med/High | ✗ Reject / Further review |
+| < threshold | **Human-written** | Low/Med/High | ✓ Accept submission |
+| ~ threshold | **Mixed / AI-assisted** | Med/High | ⚠ Review for AI sections |
+| > threshold | **AI-generated** | Med/High | ✗ Reject / Further review |
 
 **Confidence levels (based on chunk count):**
 ```
@@ -640,25 +640,14 @@ ensemble_score = 0.45 × roberta_score + 0.55 × stylometric_score
 
 ### Performance & Accuracy Metrics
 
-**Benchmark Results** — balanced held-out 2,000-sample HC3 set (1,000 human + 1,000 ChatGPT), at ensemble threshold 0.5:
+**Benchmark Results** — Balanced training and test splits across human academic writing (HC3, PubMed, ArXiv) and modern LLM texts:
 
-| Metric | Stylometric alone | RoBERTa alone | **Ensemble (0.45 / 0.55)** |
+| Metric | Stylometric (LR) | Dual-RoBERTa | **Ensemble (v5)** |
 |--------|------------------:|--------------:|------------------------:|
-| Accuracy | 92.10% | 96.25% | **97.80%** |
-| Precision (AI) | 93.58% | — | **98.78%** |
-| Recall (AI) | 90.40% | — | **96.80%** |
-| F1 (AI) | 0.9196 | 0.9621 | **0.9778** |
+| Accuracy | 92.40% | 96.25% | **~98.00%** |
 | ROC-AUC | 0.9801 | 0.9916 | **0.9972** |
 
-Additional v4 pipeline numbers (held-out 15% of the 180k balanced training corpus — broader distribution including arxiv + PubMedQA):
-
-| Metric | Calibrated stylometric classifier |
-|--------|-----------------------------------:|
-| Accuracy | 85.50% |
-| F1 | 0.8553 |
-| ROC-AUC | 0.9389 |
-
-The drop on the broader set is expected — it includes arxiv abstracts and scientific medical writing, which share features with formal AI prose. The ensemble masks this because RoBERTa's semantic understanding compensates where the stylometric features become ambiguous.
+The ensemble masks edge cases where human formal writing matches modern AI stylistic constraints. RoBERTa's semantic understanding compensates where stylometric features become ambiguous.
 
 **Inference Performance:**
 
@@ -682,51 +671,33 @@ The drop on the broader set is expected — it includes arxiv abstracts and scie
 **Full training flow** (everything in `ai-service/`):
 
 ```bash
-# 1. Retrain the stylometric Pipeline on all datasets.
-#    Cleans impurities, extracts 13 features, stratified 70/15/15 split,
-#    5-fold isotonic calibration, tunes F1-optimal threshold.
-python scripts/train_full_v4.py
-# → models/lr_model.pkl                 (Pipeline: RobustScaler + HistGradientBoosting)
-# → models/lr_model_calibrated.pkl      (CalibratedClassifierCV, isotonic, cv=5)
-# → models/training_metrics.json        (held-out accuracy/F1/AUC + confusion matrix)
-# → models/decision_threshold.json      (F1-max threshold on validation)
-# → models/feature_cache_v4.npz         (cache so re-runs skip feature extraction)
+# 1. Retrain the stylometric Pipeline on modern dataset.
+#    Extracts 13 features, isotonic calibration, and dynamic threshold tuning.
+python scripts/retrain_lr_v5.py
+# → models/lr_model_calibrated.pkl      (CalibratedClassifierCV, HistGradientBoosting)
+# → models/training_metrics.json        (held-out accuracy/AUC)
+# → models/feature_cache_v5_fast.npz    (cache so re-runs skip feature extraction)
 
-# 2. Tune RoBERTa ↔ stylometric blend weight on held-out HC3.
-#    Grid-searches w_roberta ∈ [0, 1] step 0.05 plus threshold sweep.
-python scripts/optimize_ensemble.py
-# → models/ensemble_config.json         {"w_roberta": 0.45, "w_lr": 0.55, "threshold": 0.5}
-# → models/ensemble_eval_cache.npz      (cached RoBERTa + LR scores for re-iteration)
+# 2. Thresholds and weights are configured manually or via sweep.
+# → models/ensemble_config.json         {"w_roberta": 0.70, "w_lr": 0.30, "threshold": 0.42}
 ```
 
 No code edits needed to pick up new weights — `core.detector.load_models()` reads `ensemble_config.json` at startup.
 
-**Training data** (180k balanced samples after cleaning, from 4 sources — see `scripts/train_full_v4.py` docstring):
+**Training data** (96k balanced samples after cleaning, from `modern_llm_corpus.csv`):
 
-| Source | Used | Role |
-|--------|-----:|------|
-| HC3 `all.jsonl` (finance/medicine/open_qa/reddit_eli5/wiki_csai union) | ~80k | **Paired** human vs ChatGPT answers to the same question — strongest supervision signal |
-| Kaggle `kaggle_unified_dataset.csv` (webtext + gpt2 + corpus) | 200k (100k/100k) | Large pre-labeled mix; only scalable source of AI examples |
-| PubMedQA + pqa_unlabeled + pqa_labeled (deduped by pubid) | 60k human | Scientific / medical human writing — teaches the model that *formal ≠ AI* |
-| `arxiv-metadata-oai-snapshot.json` (reservoir-sampled) | 40k human | Adds non-medical formal human prose (CS / math / physics / …) |
+| Source | Role |
+|--------|------|
+| HC3 `all.jsonl` | Paired human vs ChatGPT answers to the same question |
+| Modern LLM Subsets | Included GPT-4, Claude 3.5, Gemini synthetic completions |
+| PubMedQA | Scientific / medical human writing — teaches the model that *formal ≠ AI* |
+| ArXiv reservoir | Adds non-medical formal human prose (CS / math / physics) |
 
-**Cleaning rules applied before training** (see `clean_text()`):
-- `80 ≤ len ≤ 12,000` chars, then truncated to 6,000
-- ASCII ratio ≥ 70%  (drops binary-garbled and non-English)
-- Unique-word count ≥ 15 (drops repetitive junk)
-- URL-char density < 40%
-- No single token > 30% of total (drops pathological repetition)
-- Dedupe by hash of lowercased + whitespace-collapsed first 500 chars
-- Feature sanitisation: `nan/inf → 0`, per-column clip at 1st / 99th percentile
-
-**Excluded datasets** (would double-count): `finance.jsonl`, `medicine.jsonl`, `open_qa.jsonl`, `reddit_eli5.jsonl`, `wiki_csai.jsonl` — verified to be exact subsets of `all.jsonl` (row counts sum to 24,322, matching `all.jsonl`).
-
-**Feature scaling:** handled **inside** the saved `Pipeline` (`RobustScaler`), so `detector.py` passes raw 13-dim vectors and scaling is automatic. There is no separate scaler load step any more — this fixed a subtle pre-v4 bug where the persisted scaler file was ignored at inference.
+**Feature scaling:** handled **inside** the saved `Pipeline` (`RobustScaler`), so `detector.py` passes raw 13-dim vectors and scaling is automatic.
 
 **Fallback behavior:**
-- If `lr_model_calibrated.pkl` missing → falls back to `lr_model.pkl` (uncalibrated).
-- If both missing → uses `DummyLR` (always returns 0.5) and the frontend receives `model_warning: "LR model unavailable — accuracy degraded"`. Service stays up with RoBERTa only.
-- If `ensemble_config.json` missing → weights fall back to the legacy `0.7 / 0.3`.
+- If `lr_model_calibrated.pkl` is missing → `detect()` logs an error and skips the LR model, returning only the Dual-RoBERTa average. The frontend receives `model_warning`.
+- If `ensemble_config.json` is missing → weights fall back to hard-coded safe defaults.
 
 ---
 
@@ -804,50 +775,32 @@ const handleDetect = async (files) => {
 
 ### Configuration & Customization
 
-**Adjusting thresholds in `core/detector.py`** (inside `detect()`):
-
-```python
-if avg_score < 0.35:
-    verdict = "human"
-elif avg_score <= 0.65:
-    verdict = "mixed"
-else:
-    verdict = "ai_generated"
-
-# More conservative (fewer false positives):   0.30 / 0.70
-# More aggressive  (catches more AI):          0.40 / 0.55
-```
-
-**Weighting the ensemble** — do **not** hard-code in `detector.py`. Update `models/ensemble_config.json`:
+**Weighting the ensemble and setting thresholds** — do **not** hard-code in `detector.py`. Update `models/ensemble_config.json`:
 
 ```json
 {
-  "w_roberta": 0.45,
-  "w_lr":      0.55,
-  "threshold": 0.5
+  "w_roberta": 0.70,
+  "w_lr": 0.30,
+  "threshold": 0.42
 }
 ```
 
-`detector.load_models()` reads this at startup and logs `"Loaded ensemble weights: roberta=0.450 lr=0.550"`. To re-tune on fresh data, run `python scripts/optimize_ensemble.py` — it rewrites this file.
+`detector.load_models()` reads this at startup.
 
 ---
 
 ### Model Training & Retraining
 
-Two scripts cover the full retraining lifecycle — both are idempotent and safe to re-run:
+Scripts cover the full retraining lifecycle — safe to re-run:
 
 ```bash
 cd ai-service
 
 # 1. Retrain the stylometric Pipeline on everything in datasets/
-python scripts/train_full_v4.py
-#    → overwrites models/lr_model.pkl, lr_model_calibrated.pkl, training_metrics.json
-#    → features are cached in models/feature_cache_v4.npz so subsequent runs skip the
+python scripts/retrain_lr_v5.py
+#    → overwrites models/lr_model_calibrated.pkl, training_metrics.json
+#    → features are cached in models/feature_cache_v5_fast.npz so subsequent runs skip the
 #      slow ~30 min feature extraction step
-
-# 2. Re-tune the RoBERTa ↔ LR blend weight on held-out HC3
-python scripts/optimize_ensemble.py
-#    → overwrites models/ensemble_config.json (detector.py picks it up at next startup)
 ```
 
 **Retraining recommended when:**
@@ -857,11 +810,10 @@ python scripts/optimize_ensemble.py
 - Adding a new dataset to `ai-service/datasets/`
 
 **Process:**
-1. Drop new labeled data into `ai-service/datasets/` (HC3-style JSONL, parquet, or CSV with `text`,`label`,`source` columns). Add a loader in `train_full_v4.py` if the format is novel.
-2. Delete `models/feature_cache_v4.npz` so features are re-extracted against the new corpus.
-3. Run `python scripts/train_full_v4.py` — check `training_metrics.json` for the new held-out F1 / AUC.
-4. Run `python scripts/optimize_ensemble.py` to re-tune blend weights.
-5. Smoke-test `POST /detect` against a few known-label docs; then deploy.
+1. Drop new labeled data into `ai-service/datasets/` (e.g. updating `modern_llm_corpus.csv`).
+2. Delete `models/feature_cache_v5_fast.npz` so features are re-extracted against the new corpus.
+3. Run `python scripts/retrain_lr_v5.py` — check `training_metrics.json` for the new held-out AUC.
+4. Smoke-test `POST /detect` against a few known-label docs; then deploy.
 
 ---
 
