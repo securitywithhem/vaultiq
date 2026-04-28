@@ -1,0 +1,33 @@
+Spark Environment Verification
+===============================
+Verified: 2026-04-28
+
+Python Version:
+Python 3.11.15 (recommended for PySpark 3.4.0+)
+
+PySpark Version:
+PySpark 3.4.0
+
+Docker Setup:
+Status: Docker daemon not running on this machine
+Alternative: Using local Spark execution with Python 3.11
+
+Spark Web UI:
+http://localhost:8080 (available when Docker Spark containers are running)
+
+HDFS NameNode UI:
+http://localhost:9870 (available when Docker HDFS containers are running)
+
+Local Spark Test Result:
+✓ Spark session created successfully
+✓ DataFrame creation working
+✓ Data operations functional
+✓ Spark shutdown clean
+
+Environment Variables (for local development):
+export PYSPARK_PYTHON=/opt/homebrew/bin/python3.11
+export PYSPARK_DRIVER_PYTHON=/opt/homebrew/bin/python3.11
+unset SPARK_HOME
+
+Status: VERIFIED ✓
+All required components are ready for analytics job execution.
