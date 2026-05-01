@@ -9,8 +9,8 @@ import json
 import os
 from datetime import datetime, timezone
 
-HDFS_LOGS_PATH    = os.getenv('HDFS_LOGS_PATH',    'hdfs://localhost:9000/vaultiq/logs/')
-HDFS_RESULTS_PATH = os.getenv('HDFS_RESULTS_PATH', 'hdfs://localhost:9000/vaultiq/results/')
+HDFS_LOGS_PATH    = os.getenv('HDFS_LOGS_PATH',    'hdfs://namenode:9000/vaultiq/logs/')
+HDFS_RESULTS_PATH = os.getenv('HDFS_RESULTS_PATH', 'hdfs://namenode:9000/vaultiq/results/')
 
 spark = SparkSession.builder \
     .appName("VaultIQ-Analytics") \
@@ -310,6 +310,39 @@ local_path = os.path.join(local_dir, "analytics_latest.json")
 with open(local_path, "w") as f:
     f.write(results_json)
 print(f"[analytics_job] Wrote local copy: {local_path}")
+
+# ── AWS S3 Backup ─────────────────────────────────────────────────────────────
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION     = os.getenv("AWS_REGION", "ap-south-1")
+S3_BUCKET      = os.getenv("S3_BUCKET_NAME")
+
+if AWS_ACCESS_KEY and AWS_SECRET_KEY and S3_BUCKET:
+    try:
+        import boto3
+        print(f"[analytics_job] Archiving results to AWS S3 bucket: {S3_BUCKET}...")
+        
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=AWS_ACCESS_KEY,
+            aws_secret_access_key=AWS_SECRET_KEY,
+            region_name=AWS_REGION
+        )
+        
+        # 1. Upload the analytics JSON
+        s3_key_results = f"analytics-archive/analytics_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key_results,
+            Body=results_json,
+            ContentType='application/json'
+        )
+        print(f"[analytics_job] ✅ Successfully uploaded analytics to S3: {s3_key_results}")
+        
+    except Exception as e:
+        print(f"[analytics_job] ❌ Failed to upload to AWS S3: {str(e)}")
+else:
+    print("[analytics_job] ⚠️ AWS credentials not found in environment. Skipping S3 backup.")
 
 spark.stop()
 print("Analytics job complete.")

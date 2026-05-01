@@ -217,6 +217,7 @@ flowchart TD
     HDFS --> Spark
     Spark --> Results
     Results --> AnalyticsRoute
+    Results -->|"archive"| S3
 
     AnalyticsRoute -->|"normalised payload"| UI
 ```
@@ -913,6 +914,7 @@ flowchart TD
 
     Results --> HDFSOut["HDFS /vaultiq/results/"]
     Results --> LocalOut["bigdata/results/"]
+    Results --> S3Archive["AWS S3 Bucket<br/>(Cold Storage Archive)"]
     Results --> API["Backend /api/analytics<br/>serves normalised payload to frontend"]
 ```
 
@@ -960,6 +962,11 @@ flowchart LR
 
 - Files are stored under `{userId}/{fileId}` keys — no file from one user can be accessed by another even if S3 permissions were misconfigured, because the backend enforces `user_id` ownership before generating the S3 key.
 - S3 server-side encryption (SSE-S3 or SSE-KMS) adds a second layer of encryption at rest on top of the application-level AES encryption.
+
+### AWS S3 — Cold Storage Archiving (Big Data)
+
+To ensure the safety of analytics data stored locally in HDFS on the EC2 instance, the daily Spark job automatically archives the generated `analytics_latest.json` payload directly to an AWS S3 bucket using the Python `boto3` SDK. 
+This creates a resilient "Cold Storage" backup, allowing the local HDFS to operate purely as a fast "Hot Processing" layer without risking data loss upon EC2 instance termination.
 
 ### Supabase (PostgreSQL 15) — Metadata & Auth
 
