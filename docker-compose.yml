@@ -1,19 +1,95 @@
+# VaultIQ Docker Compose — Production (HDFS + Spark)
+# Architecture: HDFS + Spark on EC2, AI Service deployed separately (Railway/Render)
+# Database: Supabase cloud (no local Postgres needed)
 
+version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: vaultiq-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-vaultiq}
+  # ─── HDFS NameNode ───────────────────────────────────────────────────────────
+
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: vaultiq-namenode
     ports:
-      - "5432:5432"
+      - "9870:9870"   # WebHDFS UI
+      - "9000:9000"   # HDFS RPC
+    environment:
+      CLUSTER_NAME: vaultiq
+      HADOOP_HEAPSIZE: 256          # Limit to 256 MB — critical for t2.small
+    env_file:
+      - ./hadoop.env
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - namenode_data:/hadoop/dfs/name
     networks:
       - vaultiq-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── HDFS DataNode ──────────────────────────────────────────────────────────
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: vaultiq-datanode
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+      HADOOP_HEAPSIZE: 256          # Limit to 256 MB
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+    depends_on:
+      namenode:
+        condition: service_healthy
+    networks:
+      - vaultiq-net
+    restart: unless-stopped
+
+  # ─── Spark Master ──────────────────────────────────────────────────────────
+
+  spark-master:
+    image: apache/spark:3.5.3
+    container_name: vaultiq-spark-master
+    command: /opt/spark/sbin/start-master.sh
+    ports:
+      - "8080:8080"   # Spark UI
+      - "7077:7077"   # Spark submit port
+    environment:
+      SPARK_MASTER_HOST: spark-master
+      SPARK_DAEMON_MEMORY: 256m
+      SPARK_NO_DAEMONIZE: "true"
+    env_file:
+      - backend/.env
+    volumes:
+      - ./bigdata:/opt/spark-jobs     # Mount analytics scripts for spark-submit
+      - ./bigdata/results:/opt/spark-results
+    networks:
+      - vaultiq-net
+    restart: unless-stopped
+
+  # ─── Spark Worker ──────────────────────────────────────────────────────────
+
+  spark-worker:
+    image: apache/spark:3.5.3
+    container_name: vaultiq-spark-worker
+    command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
+    environment:
+      SPARK_WORKER_MEMORY: 512m
+      SPARK_WORKER_CORES: 1
+      SPARK_NO_DAEMONIZE: "true"
+    depends_on:
+      - spark-master
+    volumes:
+      - ./bigdata:/opt/spark-jobs     # Mount analytics scripts
+      - ./bigdata/results:/opt/spark-results
+    networks:
+      - vaultiq-net
+    restart: unless-stopped
+
+  # ─── Redis Cache & Queue ──────────────────────────────────────────────────
 
   redis:
     image: redis:7-alpine
@@ -22,130 +98,73 @@ services:
       - "6379:6379"
     networks:
       - vaultiq-net
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # ─── Node.js Backend ──────────────────────────────────────────────────────
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: vaultiq-backend
     ports:
       - "5000:5000"
     volumes:
       - ./backend:/app
       - /app/node_modules
+      - ./bigdata/results:/app/bigdata-results  # Access Spark output
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      HDFS_WEBHDFS_URL: http://namenode:9870/webhdfs/v1
+      HDFS_USER: root
+      HDFS_ENABLED: "true"
     env_file:
       - backend/.env
-    depends_on:
-      - db
-      - redis
-      - ai-service
-    networks:
-      - vaultiq-net
-
-  ai-service:
-    build:
-      context: ./ai-service
-      dockerfile: Dockerfile
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./ai-service:/app
-    env_file:
-      - backend/.env
-    networks:
-      - vaultiq-net
-
-  namenode:
-    platform: linux/amd64
-    image: apache/hadoop:3
-    container_name: namenode
-    hostname: namenode
-    restart: unless-stopped
-    # Format once on first boot (idempotent: skips if already formatted)
-    command: >
-      bash -c "
-        [ ! -d /hadoop/dfs/name/current ] && hdfs namenode -format -force -nonInteractive;
-        hdfs namenode
-      "
-    environment:
-      HADOOP_HOME: /opt/hadoop
-      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
-    ports:
-      - "9870:9870"   # NameNode Web UI / WebHDFS
-      - "9000:9000"   # HDFS RPC
-    volumes:
-      - hadoop_namenode:/hadoop/dfs/name
-    networks:
-      - vaultiq-net
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9870/webhdfs/v1/?op=LISTSTATUS || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-
-  datanode:
-    platform: linux/amd64
-    image: apache/hadoop:3
-    container_name: datanode
-    hostname: datanode
-    restart: unless-stopped
-    command: ["hdfs", "datanode"]
-    environment:
-      HADOOP_HOME: /opt/hadoop
-      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
-    volumes:
-      - hadoop_datanode:/hadoop/dfs/data
     depends_on:
       namenode:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - vaultiq-net
-
-  spark-master:
-    platform: linux/amd64
-    image: apache/spark:latest
-    container_name: spark-master
     restart: unless-stopped
-    environment:
-      SPARK_MODE: master
-      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
-      SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
-      SPARK_SSL_ENABLED: "no"
+
+  # ─── React Frontend (optional — can deploy to Vercel instead) ──────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vaultiq-frontend
     ports:
-      - "8080:8080"   # Spark Web UI
-      - "7077:7077"   # Spark master RPC
+      - "3000:3000"
     volumes:
-      - ./backend/scripts/spark-jobs:/opt/spark-jobs  # analytics scripts
-    networks:
-      - vaultiq-net
-
-  spark-worker:
-    platform: linux/amd64
-    image: apache/spark:latest
-    container_name: spark-worker
-    restart: unless-stopped
-    depends_on:
-      - spark-master
+      - ./frontend:/app
+      - /app/node_modules
     environment:
-      SPARK_MODE: worker
-      SPARK_MASTER_URL: spark://spark-master:7077
-      SPARK_WORKER_MEMORY: 1G
-      SPARK_WORKER_CORES: "1"
-      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
-      SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
-      SPARK_SSL_ENABLED: "no"
-    volumes:
-      - ./backend/scripts/spark-jobs:/opt/spark-jobs  # workers need the script too
+      REACT_APP_API_URL: http://localhost:5000
+    depends_on:
+      - backend
     networks:
       - vaultiq-net
+    restart: unless-stopped
+
+# ─── Networks & Volumes ───────────────────────────────────────────────────────
 
 networks:
   vaultiq-net:
     driver: bridge
 
 volumes:
-  postgres_data:
-  hadoop_namenode:
-  hadoop_datanode:
-
+  namenode_data:
+  datanode_data:
+  redis_data:

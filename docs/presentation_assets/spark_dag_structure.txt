@@ -1,0 +1,76 @@
+VaultIQ Analytics Job - Spark DAG Structure
+Generated: 2026-04-28
+
+The analytics_job.py executes the following Spark computational DAG:
+
+INPUT: HDFS or Supabase event_logs (50,030 events)
+
+STAGE 1: READ & PARSE
+├─ Read JSON events from HDFS /vaultiq/logs/ (date-partitioned)
+│  OR Supabase event_logs table (fallback)
+├─ Parse JSON records
+└─ Create Spark DataFrame with schema: [id, user_id, event_type, timestamp, ...]
+
+STAGE 2: TRANSFORM
+├─ Extract date from timestamp
+├─ Add event hour/day of week
+├─ Denormalize user/event metadata
+└─ Create working DataFrame with enriched fields
+
+STAGE 3A: DAILY_ACTIVITY (Shuffle-Aggregate Job)
+├─ Task 1-4: Group events by date
+├─ Task 5-8: Count uploads, downloads, detections per day
+├─ Task 9: Sum bytes per day
+└─ Output: daily_activity.json
+
+STAGE 3B: ANOMALY_DETECTION (Filter-Window Job)
+├─ Task 1-2: Detect delete rate spikes (2-sigma threshold)
+├─ Task 3-4: Find high-volume users (>50 events/hour)
+└─ Output: anomaly_detection.json
+
+STAGE 3C: AI_USAGE_STATS (Grouping Job)
+├─ Task 1: Filter AI detection events
+├─ Task 2-3: Group by verdict (human/mixed/ai_generated)
+├─ Task 4: Calculate avg scores by file type
+└─ Output: ai_usage_stats.json
+
+STAGE 3D: STORAGE_ANALYTICS (Sort-Top10 Job)
+├─ Task 1: Group by user_id
+├─ Task 2: Sum bytes per user (sort descending)
+├─ Task 3: Take top 10
+└─ Output: storage_analytics.json
+
+STAGE 3E: LATENCY_ANALYSIS (Statistics Job)
+├─ Task 1: Calculate mean latency per event_type
+├─ Task 2: Calculate percentiles (p95)
+├─ Task 3: Group events by hour (0-23)
+├─ Task 4: Count events per hour
+└─ Output: latency_analysis.json
+
+STAGE 3F: USER_BEHAVIOUR (Complex Aggregation)
+├─ Task 1: Window by day (last 30)
+├─ Task 2: Count unique users per day (DAU)
+├─ Task 3: Find users with 3+ active days (returning)
+├─ Task 4: Identify event sequences
+└─ Output: user_behaviour.json
+
+STAGE 4: COLLECT & COMBINE
+├─ Task 1: Merge all 6 analytics outputs
+├─ Task 2: Add metadata (timestamp, source)
+└─ Create final analytics_latest.json
+
+OUTPUT: analytics_latest.json (20KB, 6 analytics categories)
+
+---
+
+KEY EXECUTION CHARACTERISTICS:
+- Total tasks: ~30-40 (distributed across 6 parallel jobs + collect stage)
+- Parallelism: All jobs 3A-3F run in parallel (Spark optimizes)
+- Shuffle operations: Heavy shuffling in aggregation stages
+- Memory: ~200MB per worker for intermediate data
+- Execution mode: local[*] (all CPU cores) or spark://master:7077 (cluster)
+
+PERFORMANCE:
+- Input size: 50,030 events (~5MB)
+- Processing time: ~5-30 seconds (local) or ~10-60 seconds (cluster with network)
+- Output size: 20KB (highly compressed analytics)
