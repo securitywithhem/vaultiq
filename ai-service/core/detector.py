@@ -18,6 +18,24 @@ import joblib
 import numpy as np
 from scipy.stats import entropy as scipy_entropy
 
+# spaCy for NLP features
+try:
+    import spacy
+    _SPACY_AVAILABLE = True
+    _nlp = spacy.load("en_core_web_sm")
+except ImportError:
+    _SPACY_AVAILABLE = False
+    _nlp = None
+
+# Sentence-Transformers for semantic features
+try:
+    from sentence_transformers import SentenceTransformer
+    _TRANSFORMERS_AVAILABLE = True
+    _semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
+except ImportError:
+    _TRANSFORMERS_AVAILABLE = False
+    _semantic_model = None
+
 try:
     import torch
     from transformers import (
@@ -340,6 +358,117 @@ def extract_features(text: str) -> np.ndarray:
     ])
 
 
+def extract_spacy_features(text: str) -> np.ndarray:
+    """
+    COMPONENT 1B — spaCy-based NLP features (4 features)
+
+    Computes 4 features from linguistic structure:
+      0. Passive voice ratio (true dependency parsing, not keywords)
+      1. POS diversity (grammatical variety)
+      2. Named entity density (real NER, not capitalization)
+      3. Dependency depth (syntactic complexity)
+    """
+    if not _SPACY_AVAILABLE or not _nlp:
+        return np.zeros(4)
+
+    if not text.strip():
+        return np.zeros(4)
+
+    try:
+        doc = _nlp(text[:5000])
+    except Exception as e:
+        logger.warning(f"spaCy parsing failed: {e}")
+        return np.zeros(4)
+
+    # Feature 0: REAL Passive Voice (dependency: auxpass)
+    passive_count = 0
+    verb_count = 0
+    for token in doc:
+        if token.pos_ == "VERB":
+            verb_count += 1
+        if token.dep_ == "auxpass":
+            passive_count += 1
+
+    passive_ratio = passive_count / max(verb_count, 1)
+
+    # Feature 1: POS Diversity (grammatical variety)
+    pos_tags = set([token.pos_ for token in doc if token.pos_ != "SPACE"])
+    pos_diversity = len(pos_tags) / max(len(doc), 1)
+
+    # Feature 2: Named Entity Density (real NER, not capitalization heuristic)
+    entity_count = len([ent for ent in doc.ents])
+    entity_density = entity_count / max(len(doc), 1)
+
+    # Feature 3: Average Dependency Depth (syntactic complexity)
+    depths = []
+    for token in doc:
+        depth = 0
+        current = token
+        while current.head != current:
+            depth += 1
+            current = current.head
+            if depth > 10:
+                break
+        depths.append(depth)
+
+    avg_depth = np.mean(depths) if depths else 0.0
+
+    return np.array([passive_ratio, pos_diversity, entity_density, avg_depth])
+
+
+def extract_semantic_features(text: str) -> np.ndarray:
+    """
+    COMPONENT 1C — Transformers-based semantic features (3 features)
+
+    Computes 3 features from sentence embeddings:
+      0. Semantic coherence (sentence similarity, AI is repetitive)
+      1. Semantic variance (diversity in semantic space)
+      2. Average embedding norm (writing style intensity)
+    """
+    if not _TRANSFORMERS_AVAILABLE or not _semantic_model:
+        return np.zeros(3)
+
+    if not text.strip():
+        return np.zeros(3)
+
+    try:
+        sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.')
+                     if s.strip() and len(s.strip()) > 20]
+
+        if len(sentences) < 2:
+            return np.zeros(3)
+
+        sentences = sentences[:10]
+        embeddings = _semantic_model.encode(sentences, convert_to_numpy=True)
+
+    except Exception as e:
+        logger.warning(f"Semantic embedding failed: {e}")
+        return np.zeros(3)
+
+    # Feature 0: Semantic Coherence (mean pairwise similarity)
+    if len(embeddings) > 1:
+        from sklearn.metrics.pairwise import cosine_similarity
+        similarities = []
+        for i in range(len(embeddings) - 1):
+            sim = cosine_similarity([embeddings[i]], [embeddings[i+1]])[0][0]
+            similarities.append(sim)
+        semantic_coherence = np.mean(similarities)
+    else:
+        semantic_coherence = 0.5
+
+    # Feature 1: Semantic Variance (std dev of similarities)
+    if len(similarities) > 1:
+        semantic_variance = np.std(similarities)
+    else:
+        semantic_variance = 0.0
+
+    # Feature 2: Average Embedding Norm (magnitude of average embedding)
+    avg_embedding = np.mean(embeddings, axis=0)
+    avg_norm = np.linalg.norm(avg_embedding)
+
+    return np.array([semantic_coherence, semantic_variance, avg_norm])
+
+
 def roberta_score(text: str) -> float:
     """
     COMPONENT 2 — RoBERTa ensemble classifier
@@ -394,6 +523,26 @@ def lr_score(text: str) -> float:
         return 0.5
 
 
+def lr_score_enhanced(features: np.ndarray) -> float:
+    """
+    COMPONENT 3B — Logistic Regression on 20-feature vector
+
+    Accepts 20 features (13 custom + 4 spaCy + 3 semantic)
+    Returns probability [0, 1]
+    """
+    if not is_model_loaded():
+        raise RuntimeError("Models are not loaded.")
+
+    try:
+        assert _lr_model is not None, "LR Model not loaded"
+        features_2d = features.reshape(1, -1)
+        proba = _lr_model.predict_proba(features_2d)
+        return float(proba[0][1])
+    except Exception as e:
+        logger.warning(f"LR scoring failed on 20-feature vector: {e}")
+        return 0.5
+
+
 def ensemble_score(text: str) -> float:
     """
     COMPONENT 4 — Meta ensemble
@@ -409,9 +558,10 @@ def ensemble_score(text: str) -> float:
 
 def detect(chunks: list[str]) -> dict[str, Any]:
     """
-    COMPONENT 5 — Main entry point
+    COMPONENT 5 — Main entry point (UPDATED for 20 features)
 
     Runs the meta-ensemble over chunks and produces document-level verdict.
+    Now uses 20-feature vector (13 custom + 4 spaCy + 3 semantic).
     """
     if not chunks:
         return {
@@ -428,7 +578,19 @@ def detect(chunks: list[str]) -> dict[str, Any]:
         if not chunk.strip():
             continue
         try:
-            score = ensemble_score(chunk)
+            # Extract all 20 features
+            custom_feats = extract_features(chunk)           # 13
+            spacy_feats = extract_spacy_features(chunk)      # 4
+            semantic_feats = extract_semantic_features(chunk) # 3
+
+            # Combine: 13 + 4 + 3 = 20 features
+            all_features = np.concatenate([custom_feats, spacy_feats, semantic_feats])
+
+            # Use RoBERTa + LR ensemble
+            r_score = roberta_score(chunk)
+            l_score = lr_score_enhanced(all_features)
+            score = _W_ROBERTA * r_score + _W_LR * l_score
+
             chunk_scores.append(score)
         except Exception as e:
             logger.error(f"Error scoring chunk: {e}")
