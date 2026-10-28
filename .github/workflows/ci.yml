@@ -1,0 +1,278 @@
+# VaultIQ — Continuous Integration
+# Runs on every PR and every push to main. Only the services whose files
+# changed are tested; the final "CI passed" job is the single required check.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  # Matches ai-service/Dockerfile so CI tests what ships
+  AI_PYTHON_VERSION: '3.9'
+
+jobs:
+  # ─── Detect which services changed ─────────────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    # Manual runs test everything
+    outputs:
+      backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
+      frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.frontend == 'true' }}
+      ai: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ai == 'true' }}
+      spark: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.spark == 'true' }}
+      docker: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docker == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ci: &ci
+              - '.github/workflows/ci.yml'
+            backend:
+              - *ci
+              - 'backend/**'
+            frontend:
+              - *ci
+              - 'frontend/**'
+            ai:
+              - *ci
+              - 'ai-service/**'
+            spark:
+              - *ci
+              - 'bigdata/**'
+              - 'scripts/run-spark-job.sh'
+            docker:
+              - *ci
+              - '**/Dockerfile'
+              - '**/.dockerignore'
+              - 'docker-compose.yml'
+              - 'nginx/**'
+
+  # ─── Backend (Node/Express) ────────────────────────────────────────────────
+  backend:
+    name: Backend · lint & test
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      NODE_ENV: test
+      REDIS_URL: redis://localhost:6379
+      # Dummy values for server.js's REQUIRED_ENV check (it exits if any is missing);
+      # tests mock the network. JWT_SECRET must be >= 32 chars.
+      PORT: '5000'
+      SUPABASE_URL: http://localhost:54321
+      SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_KEY: ci-service-key
+      JWT_SECRET: ci-jwt-secret-not-used-in-production
+      ENCRYPTION_KEY: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+      AWS_ACCESS_KEY_ID: ci-access-key
+      AWS_SECRET_ACCESS_KEY: ci-secret-key
+      AWS_REGION: us-east-1
+      S3_BUCKET_NAME: ci-bucket
+      HDFS_WEBHDFS_URL: http://localhost:9870/webhdfs/v1
+      HDFS_ENABLED: 'false'
+      AI_SERVICE_URL: http://localhost:8001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # `npm run lint` uses --fix; CI must only check
+      - name: Lint
+        run: npx eslint .
+      - name: Test
+        run: npx jest --ci --forceExit --coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 7
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+
+  # ─── Frontend (React / CRA) ────────────────────────────────────────────────
+  frontend:
+    name: Frontend · test & build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Test
+        run: npm test -- --ci
+        env:
+          CI: 'true'
+      # CRA treats lint warnings as errors when CI=true; keep the build gate on
+      # compile errors only (warnings are still printed in the log)
+      - name: Build
+        run: npm run build
+        env:
+          CI: 'false'
+          REACT_APP_API_URL: http://localhost:5000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          retention-days: 7
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+
+  # ─── AI service (FastAPI + PyTorch) ────────────────────────────────────────
+  ai-service:
+    name: AI service · lint & test
+    needs: changes
+    if: needs.changes.outputs.ai == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ai-service
+    env:
+      # CPU-only torch wheels (~200 MB instead of ~2.5 GB of CUDA libraries)
+      PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.AI_PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            ai-service/requirements.txt
+            ai-service/requirements-dev.txt
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ hashFiles('ai-service/core/detector.py', 'ai-service/core/embeddings.py') }}
+          restore-keys: hf-${{ runner.os }}-
+      - run: pip install -r requirements-dev.txt
+      - name: Lint (syntax errors & undefined names)
+        run: ruff check --select E9,F63,F7,F82 --target-version py39 .
+      - name: Test
+        run: python -m pytest -q tests
+
+  # ─── Spark analytics jobs ──────────────────────────────────────────────────
+  spark:
+    name: Analytics · test
+    needs: changes
+    if: needs.changes.outputs.spark == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: bigdata/requirements.txt
+      # pyspark pinned to the cluster image in docker-compose.yml (apache/spark:3.5.3)
+      - run: pip install pyspark==3.5.3 pytest==7.4.3 ruff==0.6.9 -r bigdata/requirements.txt
+      - name: Lint (syntax errors & undefined names)
+        run: ruff check --select E9,F63,F7,F82 bigdata backend/scripts
+      # Spark job (bigdata/analytics_job.py, mounted at /opt/spark-jobs) + pure-Python fallback
+      - name: Test
+        run: python -m pytest -q bigdata/tests
+
+  # ─── Docker images build ───────────────────────────────────────────────────
+  docker:
+    name: Docker · build ${{ matrix.service }}
+    needs: [changes, backend, frontend, ai-service]
+    # Run once the service tests passed (or were skipped as unchanged)
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            filter: backend
+          - service: frontend
+            filter: frontend
+          - service: ai-service
+            filter: ai
+    env:
+      # `matrix` is not available in a job-level `if`, so gate the steps instead
+      SHOULD_BUILD: ${{ needs.changes.outputs.docker == 'true' || needs.changes.outputs[matrix.filter] == 'true' }}
+    steps:
+      - name: Skip (no changes affecting this image)
+        if: env.SHOULD_BUILD != 'true'
+        run: echo "No changes for ${{ matrix.service }}; skipping image build."
+      - uses: actions/checkout@v4
+        if: env.SHOULD_BUILD == 'true'
+      - uses: docker/setup-buildx-action@v3
+        if: env.SHOULD_BUILD == 'true'
+      - uses: docker/build-push-action@v6
+        if: env.SHOULD_BUILD == 'true'
+        with:
+          context: ${{ matrix.service }}
+          push: false
+          tags: vaultiq-${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - name: Validate docker-compose.yml
+        if: env.SHOULD_BUILD == 'true' && matrix.service == 'backend'
+        run: |
+          touch backend/.env
+          docker compose config --quiet
+
+  # ─── Single required status check ──────────────────────────────────────────
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [changes, backend, frontend, ai-service, spark, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "One or more CI jobs failed: ${{ toJSON(needs.*.result) }}"
+          exit 1
+      - run: echo "All CI jobs passed or were skipped (unchanged)."

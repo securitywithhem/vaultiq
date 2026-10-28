@@ -1,0 +1,104 @@
+# VaultIQ — Continuous Deployment to EC2
+# Deploys the exact commit that passed CI on main, then smoke-tests it.
+# Manual runs (Actions → Deploy → Run workflow) can deploy any ref, e.g. to roll back.
+#
+# One-time setup (Settings → Secrets and variables → Actions):
+#   Variables: DEPLOY_ENABLED=true, EC2_PROJECT_DIR (optional, default /home/ubuntu/vaultiq)
+#   Secrets:   EC2_HOST, EC2_USER, EC2_SSH_KEY (private key),
+#              EC2_KNOWN_HOSTS (output of `ssh-keyscan -H <EC2_HOST>`)
+# Optionally add required reviewers to the `production` environment for manual approval.
+
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA, tag or branch to deploy
+        required: true
+        default: main
+
+# Never run two deploys at once; queue instead of cancelling a deploy mid-flight
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    if: |
+      vars.DEPLOY_ENABLED == 'true' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+    env:
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.workflow_run.head_sha }}
+      PROJECT_DIR: ${{ vars.EC2_PROJECT_DIR || '/home/ubuntu/vaultiq' }}
+    steps:
+      # DEPLOY_REF is interpolated into a remote shell command — allow only ref-safe characters
+      - name: Validate ref
+        run: |
+          if ! [[ "$DEPLOY_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Invalid ref: $DEPLOY_REF"; exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$EC2_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Run deploy script
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+            "set -e; cd '$PROJECT_DIR'; git fetch --quiet --tags origin
+             # Check out the target first so the deploy script itself comes from that commit
+             git checkout --quiet --detach \"\$(git rev-parse --verify --quiet 'origin/$DEPLOY_REF' || echo '$DEPLOY_REF')\"
+             PROJECT_DIR='$PROJECT_DIR' DEPLOY_REF='$DEPLOY_REF' bash scripts/deploy.sh"
+
+      - name: Smoke test backend health
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          for i in $(seq 1 20); do
+            if ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+                 "curl -fsS http://localhost:5000/api/health"; then
+              echo; echo "✅ Backend healthy at $DEPLOY_REF"
+              exit 0
+            fi
+            echo "Waiting for backend ($i/20)..."; sleep 10
+          done
+          echo "::error::Backend failed health check after deploy of $DEPLOY_REF"
+          ssh -i ~/.ssh/id_deploy -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+            "docker compose -f '$PROJECT_DIR/docker-compose.yml' ps; docker logs --tail 100 vaultiq-backend" || true
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Deploy ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`$DEPLOY_REF\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Roll back: Actions → Deploy → Run workflow with a previous SHA." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy
