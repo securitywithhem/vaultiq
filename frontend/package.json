@@ -15,7 +15,7 @@
     "react-dom": "^19.2.4",
     "react-dropzone": "^15.0.0",
     "react-hot-toast": "^2.6.0",
-    "react-router-dom": "^6.30.3",
+    "react-router-dom": "^7.18.4",
     "react-scripts": "^5.0.1",
     "recharts": "^3.8.1",
     "pdfjs-dist": "^4.0.269",
