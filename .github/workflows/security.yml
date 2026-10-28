@@ -49,7 +49,22 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+      - name: Check dependency graph availability
+        id: dependency-graph
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const enabled = data.security_and_analysis?.dependency_graph?.status === "enabled";
+            core.setOutput("enabled", enabled ? "true" : "false");
+            if (!enabled) {
+              core.warning("Dependency Graph is disabled or not visible to this token; skipping dependency review.");
+            }
       - uses: actions/dependency-review-action@v4
+        if: steps.dependency-graph.outputs.enabled == 'true'
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
