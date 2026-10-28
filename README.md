@@ -19,7 +19,7 @@ VaultIQ is a full-stack education platform combining secure file storage, Micros
 
 1. **Public Assignment Collections** — Teachers create collections with custom fields (name, email, student ID, dropdown options, etc.). Students submit via shareable `/submit/:code` links — no login required. Teachers review submissions, download files, and view responses.
 2. **Security** — Every file encrypted with AES-256-CBC before leaving the browser; SHA-256 integrity verification on download.
-3. **AI Content Detection** — Production-ready hybrid ensemble combining fine-tuned RoBERTa (70% weight) with calibrated Logistic Regression over 20 engineered features (spaCy NLP + semantic embeddings + statistical metrics). Detects AI-generated content from GPT-4, Claude 3.5, Gemini, and other modern LLMs. Configurable via `ensemble_config.json`. (Accuracy: 98.30%, ROC-AUC: 0.9972)
+3. **AI Content Detection** — Hybrid ensemble of two RoBERTa detectors (90% weight) and a calibrated classifier over 25 engineered features (statistical + spaCy + fine-tuned MiniLM embedding features), with an optional neural head. Configurable via `ensemble_config.json`. (On HC3 domains held out from training: accuracy 97.0%, ROC-AUC 0.993)
 4. **Analytics** — Apache Spark batch jobs produce 6 analytics categories from HDFS event logs (daily activity, anomalies, AI usage, storage, latency, user behaviour).
 
 ---
@@ -186,7 +186,7 @@ flowchart TD
         Chunk["Chunker<br/>sentence-level"]
         Features["Feature Extraction<br/>13 statistical + 4 spaCy + 3 semantic<br/>= 20 features total"]
         StatModel["Logistic Regression<br/>HistGradientBoosting Classifier<br/>with Platt scaling<br/>— 30% weight"]
-        RoBERTa["RoBERTa Classifier<br/>fine-tuned transformer<br/>— 70% weight"]
+        RoBERTa["RoBERTa Classifier<br/>two checkpoints<br/>— 90% weight"]
         Ensemble["Weighted Ensemble<br/>0.70·RoBERTa + 0.30·LR<br/>score + verdict + confidence"]
     end
 
@@ -260,7 +260,7 @@ sequenceDiagram
     AI->>AI: Split into sentence chunks
     AI->>AI: Extract 20 features per chunk (13 statistical + 4 spaCy NLP + 3 semantic)
     AI->>AI: Logistic Regression scores each chunk (30% weight)
-    AI->>AI: RoBERTa scores each chunk (70% weight)
+    AI->>AI: RoBERTa scores each chunk (90% weight)
     AI->>AI: Weighted ensemble → per-chunk scores
     AI->>AI: Mean of chunk scores → document score
     AI->>AI: Threshold: <0.55 human / ≥0.55 AI-generated
@@ -427,7 +427,7 @@ vaultiq/
 
 ## AI Detection System — Complete Technical Guide
 
-VaultIQ's AI content detector is a **production-ready hybrid ensemble** combining RoBERTa transformer classification with a gradient-boosted stylometric classifier over 13 engineered features. On a balanced held-out benchmark it achieves **98.30% accuracy, F1 0.9829, ROC-AUC 0.9972**, with explainable per-chunk scoring across essays, PDFs, DOCX and scanned images.
+VaultIQ's AI content detector is a **production-ready hybrid ensemble** combining RoBERTa transformer classification with a gradient-boosted classifier over 25 engineered features (including fine-tuned sentence-embedding features). On HC3 domains held out from training it achieves **97.0% accuracy, F1 0.970, ROC-AUC 0.993**, with explainable per-chunk scoring across essays, PDFs, DOCX and scanned images.
 
 ### Overview & Architecture
 
@@ -447,7 +447,7 @@ flowchart TD
     SemanticFeatures --> AllFeatures
     
     AllFeatures --> LRScore["HistGradientBoosting Pipeline<br/>(RobustScaler + Platt scaling)<br/>30% weight"]
-    RoBERTa --> RoBERTaScore["RoBERTa Score<br/>70% weight"]
+    RoBERTa --> RoBERTaScore["RoBERTa Score<br/>90% weight"]
     
     LRScore --> Ensemble["Stage 5: Weighted Ensemble<br/>0.70 × RoBERTa + 0.30 × LR<br/>(empirically tuned on modern LLMs)"]
     RoBERTaScore --> Ensemble
@@ -583,9 +583,9 @@ Twenty numerical features are extracted per chunk by `core.detector.extract_feat
 
 ---
 
-### Stage 4 — Deep Learning Classifier (70% Model Weight)
+### Stage 4 — Deep Learning Classifier (90% Model Weight)
 
-**Model:** `roberta-base-openai-detector`
+**Models:** `Hello-SimpleAI/chatgpt-detector-roberta` + `roberta-base-openai-detector` (AI probabilities averaged). Details below describe the OpenAI checkpoint.
 
 - **Base:** RoBERTa (Robustly Optimized BERT, 12 layers, 125M parameters)
 - **Fine-tuning:** OpenAI fine-tuned on GPT-2 generated text vs. WebText corpus
@@ -612,10 +612,10 @@ Twenty numerical features are extracted per chunk by `core.detector.extract_feat
 Chunk: "The rapid advancement of artificial intelligence presents both 
         opportunities and challenges for society."
 
-RoBERTa P(AI):        0.82
-LR P(AI) (20 features): 0.45
-Ensemble:             0.70 × 0.82 + 0.30 × 0.45 = 0.709
-Verdict:              AI-generated  (≥ 0.55 threshold)
+RoBERTa P(AI):          0.82
+LR P(AI) (25 features): 0.45
+Ensemble:               0.90 × 0.82 + 0.10 × 0.45 = 0.783
+Verdict:                AI-generated  (≥ 0.50 threshold)
 ```
 
 ---
@@ -624,22 +624,24 @@ Verdict:              AI-generated  (≥ 0.55 threshold)
 
 **Ensemble formula (weights live in `models/ensemble_config.json`, loaded at startup):**
 ```
-ensemble_score = 0.70 × roberta_score + 0.30 × lr_score
+ensemble_score = w_roberta × roberta_score + w_lr × lr_score + w_nn × neural_head_score
+               = 0.90 × roberta_score + 0.10 × lr_score + 0.00 × neural_head_score   (current)
 ```
 
-**Why 70 / 30 (RoBERTa / LR)?**
-- Tuned on modern datasets (96,000+ academic and LLM responses, including GPT-4, Claude 3.5, Gemini).
-- **RoBERTa (70%):** Deep semantic understanding via fine-tuned transformer; catches subtle AI signals and generalizes to new models.
-- **LR (30%):** Lightweight interpretable classifier over 20 engineered features (statistical + spaCy + semantic); provides orthogonal signal and fast inference.
-- The 20-feature LR uses `CalibratedClassifierCV(method='isotonic', cv=5)` for well-calibrated probabilities.
+**How the weights are chosen:**
+- `scripts/optimize_ensemble.py` grid-searches the weights and threshold on a validation split of HC3, scoring the exact models the service loads, and reports on held-out domains (medicine, wiki_csai) it never tunes on.
+- **RoBERTa (0.90):** strongest single component on held-out domains.
+- **LR (0.10):** calibrated gradient-boosted classifier over 25 engineered features (statistical + spaCy + semantic + document-embedding).
+- **Neural head (0.00):** MLP over fine-tuned MiniLM chunk embeddings + the 25 features. It is kept but disabled because it overfits to topic (see [AI detection architecture](docs/architecture/ai-detection.md), section 5).
 - Weights and thresholds are stored in `ensemble_config.json` so they can be re-tuned without code changes.
 
-**Decision Thresholds** (applied by `detect()` based on the threshold in `ensemble_config.json`, which is `0.55` by default):
+**Decision Thresholds** (applied by `detect()` to the mean chunk score; `threshold` in `ensemble_config.json` is currently `0.50`):
 
-| Score Range | Verdict | Confidence | Recommended Action |
-|-------------|---------|------------|------------------|
-| < 0.55 | **Human-written** | Low/Med/High | ✓ Accept submission |
-| ≥ 0.55 | **AI-generated** | Med/High | ✗ Flag / Further review |
+| Score Range | Verdict | Recommended Action |
+|-------------|---------|------------------|
+| < 0.325 (threshold × 0.65) | **Human-written** | ✓ Accept submission |
+| 0.325 – 0.50 | **Mixed** | Review |
+| ≥ 0.50 | **AI-generated** | ✗ Flag / Further review |
 
 **Confidence levels (based on chunk count):**
 ```
@@ -664,19 +666,17 @@ ensemble_score = 0.70 × roberta_score + 0.30 × lr_score
 
 ### Performance & Accuracy Metrics
 
-**Benchmark Results** — Balanced training and test splits across human academic writing (HC3, PubMed, ArXiv) and modern LLM texts:
+**Benchmark Results** — 3,000 serving-style chunks (balanced) from HC3 domains held out from training and tuning (medicine, wiki_csai):
 
-| Metric | LR (20 features) | RoBERTa | **Ensemble (70/30)** |
-|--------|------------------:|--------------:|------------------------:|
-| Accuracy | 92.40% | 96.25% | **98.30%** |
-| Precision | 93.2% | 96.8% | **98.5%** |
-| Recall | 91.8% | 95.9% | **98.1%** |
-| F1-Score | 0.9225 | 0.9633 | **0.9829** |
-| ROC-AUC | 0.9801 | 0.9916 | **0.9972** |
+| Metric | LR (25 features) | Neural head | RoBERTa | Previous ensemble (0.45/0.55) | **Current ensemble (0.90/0.10)** |
+|--------|---:|---:|---:|---:|---:|
+| Accuracy | 87.6% | 84.3% | 96.9% | 87.3% | **97.0%** |
+| Precision | 80.7% | 76.6% | 95.3% | 95.5% | **95.0%** |
+| Recall | 98.9% | 98.7% | 98.6% | 78.3% | **99.2%** |
+| F1-Score | 0.889 | 0.863 | 0.969 | 0.861 | **0.970** |
+| ROC-AUC | 0.985 | 0.977 | 0.992 | 0.971 | **0.993** |
 
-The ensemble (70% RoBERTa + 30% LR with 20 features) achieves state-of-the-art performance by combining:
-- **RoBERTa's strength:** Deep semantic understanding, generalizes to new models
-- **LR's strength:** Interpretable features, catches statistical signals RoBERTa misses, masks false positives on formal human writing
+Caveats: the `Hello-SimpleAI` RoBERTa checkpoint is believed to be trained on HC3, so its numbers here are likely optimistic; HC3 is ChatGPT-3.5-era text. The previously quoted 98.30% was measured on in-domain data and is not comparable.
 
 **Inference Performance:**
 
@@ -699,26 +699,15 @@ The ensemble (70% RoBERTa + 30% LR with 20 features) achieves state-of-the-art p
 
 **Full training flow** (everything in `ai-service/`):
 
+Full instructions: [ai-service/docs/TRAINING_RUNBOOK.md](ai-service/docs/TRAINING_RUNBOOK.md).
+
 ```bash
-# Option 1: Full end-to-end training (LR + RoBERTa)
 cd ai-service
-python scripts/train_both_lr_roberta.py
-# → models/lr_model_calibrated.pkl      (CalibratedClassifierCV, HistGradientBoosting)
-# → models/training_metrics_v5.json     (held-out accuracy/AUC/precision/recall)
-# → Trains on 80% of modern_llm_corpus.csv (3.2M rows)
-
-# Option 2: LR-only retraining with enhanced features (20 features)
-python scripts/retrain_with_enhanced_features.py
-# → models/lr_model_calibrated.pkl      (with 20 features: statistical + spaCy + semantic)
-# → models/training_metrics.json        (updated metrics)
-
-# Option 3: Legacy LR training (13 features only)
-python scripts/retrain_lr_v5.py
-# → models/lr_model_calibrated.pkl      (older feature set)
-
-# Optional: Optimize ensemble weights and threshold
-python scripts/optimize_ensemble.py
-# → models/ensemble_config.json         (tuned: w_roberta=0.70, w_lr=0.30, threshold=0.55)
+python scripts/training_data.py download            # HC3 → datasets/all.jsonl
+python scripts/finetune_embeddings.py               # → models/embedding_model/ (optional, deep learning)
+python scripts/retrain_with_enhanced_features.py    # → models/lr_model_v6_calibrated.pkl (25 features)
+python scripts/train_neural_head.py                 # → models/neural_head.pt (deep learning)
+python scripts/optimize_ensemble.py --exclude-nn    # → models/ensemble_config.json
 ```
 
 No code edits needed to pick up new weights — `core.detector.load_models()` reads `ensemble_config.json` at startup.
@@ -1505,7 +1494,7 @@ MIT — see [LICENSE](LICENSE)
 ### Latest Model Update (May 2, 2026)
 - ✅ Retrained ensemble with 20-feature LR pipeline
 - ✅ Enhanced with spaCy NLP (4 features) and semantic embeddings (3 features)
-- ✅ RoBERTa 70% / LR 30% weights (tuned on modern LLMs)
+- ✅ RoBERTa 90% / LR 10% weights (tuned on HC3 val, reported on held-out domains)
 - **Latest LR Metrics:** Accuracy 87.97%, F1 0.8813, ROC-AUC 0.9505
 - **Training Dataset:** 150k+ balanced modern_llm_corpus samples (80% of full dataset)
 - **Feature Pipeline:** 13 statistical + 4 spaCy + 3 semantic = 20 total

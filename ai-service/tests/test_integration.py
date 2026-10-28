@@ -6,6 +6,7 @@ Verifies core pipeline, API endpoints, and proper error handling.
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -103,8 +104,8 @@ class TestCorePipeline:
         text = "This is a sample sentence for feature extraction."
         features = extract_features(text)
         assert features is not None
-        assert len(features) == 8
-        assert all(isinstance(f, (float, int)) for f in features)
+        assert len(features) == 13
+        assert all(np.isfinite(f) for f in features)
 
     def test_preprocess_text(self):
         text = "First sentence. Second sentence. Third sentence."

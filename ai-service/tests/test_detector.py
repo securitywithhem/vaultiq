@@ -4,7 +4,7 @@ test_detector.py — Fix 3 corrections:
      which accepts JSON {"text": ..., "document_id": ...}.
   2. Response keys are score/verdict/confidence, not is_ai_generated/confidence_score/metrics.
   3. health endpoint returns {"status": "ok"}, not {"status": "healthy"}.
-  4. extract_features() returns np.ndarray of shape (5,), not a dict.
+  4. extract_features() returns np.ndarray of shape (13,), not a dict.
 """
 
 import numpy as np
@@ -79,16 +79,14 @@ def test_detect_human_text():
 # ── test_4: extract_features return type ──────────────────────────────────────
 
 def test_extract_features():
-    # Fix 3: extract_features() returns np.ndarray of shape (5,), NOT a dict.
-    # The 5 features are: perplexity, burstiness, ttr, avg_sent_len, punct_density
     text = "This is a simple test sentence."
     features = extract_features(text)
 
     assert isinstance(features, np.ndarray), (
         f"Expected np.ndarray, got {type(features)}"
     )
-    assert features.shape == (5,), (
-        f"Expected shape (5,), got {features.shape}"
+    assert features.shape == (13,), (
+        f"Expected shape (13,), got {features.shape}"
     )
     # Every feature value must be a finite real number
     assert all(np.isfinite(v) for v in features), (

@@ -1,0 +1,25 @@
+{
+  "hidden": [
+    128,
+    32
+  ],
+  "emb_dim": 384,
+  "n_features": 25,
+  "n_train": 24000,
+  "results": {
+    "val": {
+      "accuracy": 0.9917,
+      "precision": 0.99,
+      "recall": 0.9933,
+      "f1": 0.9917,
+      "roc_auc": 0.9997
+    },
+    "test_heldout_domains": {
+      "accuracy": 0.843,
+      "precision": 0.7664,
+      "recall": 0.9867,
+      "f1": 0.8627,
+      "roc_auc": 0.977
+    }
+  }
+}
