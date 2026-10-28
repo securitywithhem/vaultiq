@@ -968,7 +968,7 @@ spark-master ← Spark coordinator (port 8080, 7077)
 spark-worker ← Spark executor (1 core / 1 GB RAM)
 ```
 
-The `backend/scripts/spark-jobs/` directory is volume-mounted into both Spark containers so jobs can be submitted with `spark-submit /opt/spark-jobs/analytics_job.py`.
+The `bigdata/` directory is volume-mounted into both Spark containers so jobs can be submitted with `spark-submit /opt/spark-jobs/analytics_job.py`.
 
 ---
 

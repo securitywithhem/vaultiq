@@ -12,19 +12,48 @@ from datetime import datetime, timezone
 HDFS_LOGS_PATH    = os.getenv('HDFS_LOGS_PATH',    'hdfs://namenode:9000/vaultiq/logs/')
 HDFS_RESULTS_PATH = os.getenv('HDFS_RESULTS_PATH', 'hdfs://namenode:9000/vaultiq/results/')
 
-spark = SparkSession.builder \
-    .appName("VaultIQ-Analytics") \
-    .config("spark.sql.session.timeZone", "UTC") \
-    .getOrCreate()
-
-spark.sparkContext.setLogLevel("WARN")
-
-
 # ── Data Load ──────────────────────────────────────────────────────────────────
+# Events arrive in two shapes: the HDFS JSONL written by backend/utils/hdfsLogger.js
+# nests file/AI fields under `metadata` and uses `latency_ms`, while the Supabase
+# event_logs table stores them as top-level columns with `duration_ms`.
+# normalize_events() maps both onto the flat columns the analytics below expect.
 
-df = spark.read.json(HDFS_LOGS_PATH + "*/*")
-df = df.withColumn("timestamp", F.to_timestamp("timestamp"))
-df = df.withColumn("date", F.to_date("timestamp"))
+_FIELD_TYPES = {
+    "file_name":       "string",
+    "file_size_bytes": "bigint",
+    "file_type":       "string",
+    "ai_verdict":      "string",
+    "ai_score":        "double",
+    "ip_address":      "string",
+}
+
+
+def _first_present(df, candidates, dtype):
+    """Coalesce the candidate columns that exist in df (top-level or metadata.*)."""
+    top = set(df.columns)
+    meta = set()
+    if "metadata" in top and df.schema["metadata"].dataType.typeName() == "struct":
+        meta = set(df.schema["metadata"].dataType.fieldNames())
+
+    cols = []
+    for name in candidates:
+        if name in top:
+            cols.append(F.col(name).cast(dtype))
+        if name in meta:
+            cols.append(F.col(f"metadata.{name}").cast(dtype))
+    return F.coalesce(*cols) if cols else F.lit(None).cast(dtype)
+
+
+def normalize_events(df):
+    """Flatten raw events to: event_type, user_id, timestamp, date, duration_ms + _FIELD_TYPES."""
+    out = df.select(
+        _first_present(df, ["event_type"], "string").alias("event_type"),
+        _first_present(df, ["user_id"], "string").alias("user_id"),
+        F.to_timestamp(_first_present(df, ["timestamp", "created_at"], "string")).alias("timestamp"),
+        _first_present(df, ["duration_ms", "latency_ms"], "double").alias("duration_ms"),
+        *[_first_present(df, [name], dtype).alias(name) for name, dtype in _FIELD_TYPES.items()],
+    )
+    return out.withColumn("date", F.to_date("timestamp"))
 
 
 # ── 1. Daily Activity ──────────────────────────────────────────────────────────
@@ -283,66 +312,80 @@ def user_behaviour(df) -> dict:
     }
 
 
-# ── Save Results ──────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-results = {
-    "generated_at":     datetime.now(timezone.utc).isoformat(),
-    "daily_activity":   daily_activity(df),
-    "anomaly_detection": anomaly_detection(df),
-    "ai_usage_stats":   ai_usage_stats(df),
-    "storage_analytics": storage_analytics(df),
-    "latency_analysis": latency_analysis(df),
-    "user_behaviour":   user_behaviour(df),
-}
+def main():
+    spark = SparkSession.builder \
+        .appName("VaultIQ-Analytics") \
+        .config("spark.sql.session.timeZone", "UTC") \
+        .getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
 
-results_json = json.dumps(results, indent=2)
+    df = normalize_events(spark.read.json(HDFS_LOGS_PATH + "*/*"))
 
-# Write to HDFS via Spark
-rdd = spark.sparkContext.parallelize([results_json], 1)
-hdfs_out = HDFS_RESULTS_PATH + "analytics_latest.json"
-rdd.saveAsTextFile(hdfs_out)
-print(f"[analytics_job] Wrote results to HDFS: {hdfs_out}")
+    results = {
+        "generated_at":     datetime.now(timezone.utc).isoformat(),
+        "daily_activity":   daily_activity(df),
+        "anomaly_detection": anomaly_detection(df),
+        "ai_usage_stats":   ai_usage_stats(df),
+        "storage_analytics": storage_analytics(df),
+        "latency_analysis": latency_analysis(df),
+        "user_behaviour":   user_behaviour(df),
+    }
 
-# Write local copy
-local_dir = os.path.join(os.path.dirname(__file__), "results")
-os.makedirs(local_dir, exist_ok=True)
-local_path = os.path.join(local_dir, "analytics_latest.json")
-with open(local_path, "w") as f:
-    f.write(results_json)
-print(f"[analytics_job] Wrote local copy: {local_path}")
+    results_json = json.dumps(results, indent=2)
 
-# ── AWS S3 Backup ─────────────────────────────────────────────────────────────
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION     = os.getenv("AWS_REGION", "ap-south-1")
-S3_BUCKET      = os.getenv("S3_BUCKET_NAME")
+    # Write to HDFS via Spark (overwrite: saveAsTextFile fails once the path exists,
+    # which would break every run after the first)
+    hdfs_out = HDFS_RESULTS_PATH + "analytics_latest.json"
+    spark.createDataFrame([(results_json,)], ["value"]) \
+        .coalesce(1).write.mode("overwrite").text(hdfs_out)
+    print(f"[analytics_job] Wrote results to HDFS: {hdfs_out}")
 
-if AWS_ACCESS_KEY and AWS_SECRET_KEY and S3_BUCKET:
-    try:
-        import boto3
-        print(f"[analytics_job] Archiving results to AWS S3 bucket: {S3_BUCKET}...")
-        
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=AWS_ACCESS_KEY,
-            aws_secret_access_key=AWS_SECRET_KEY,
-            region_name=AWS_REGION
-        )
-        
-        # 1. Upload the analytics JSON
-        s3_key_results = f"analytics-archive/analytics_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
-        s3.put_object(
-            Bucket=S3_BUCKET,
-            Key=s3_key_results,
-            Body=results_json,
-            ContentType='application/json'
-        )
-        print(f"[analytics_job] ✅ Successfully uploaded analytics to S3: {s3_key_results}")
-        
-    except Exception as e:
-        print(f"[analytics_job] ❌ Failed to upload to AWS S3: {str(e)}")
-else:
-    print("[analytics_job] ⚠️ AWS credentials not found in environment. Skipping S3 backup.")
+    # Write local copy
+    local_dir = os.path.join(os.path.dirname(__file__), "results")
+    os.makedirs(local_dir, exist_ok=True)
+    local_path = os.path.join(local_dir, "analytics_latest.json")
+    with open(local_path, "w") as f:
+        f.write(results_json)
+    print(f"[analytics_job] Wrote local copy: {local_path}")
 
-spark.stop()
-print("Analytics job complete.")
+    # ── AWS S3 Backup ─────────────────────────────────────────────────────────────
+    AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+    AWS_REGION     = os.getenv("AWS_REGION", "ap-south-1")
+    S3_BUCKET      = os.getenv("S3_BUCKET_NAME")
+
+    if AWS_ACCESS_KEY and AWS_SECRET_KEY and S3_BUCKET:
+        try:
+            import boto3
+            print(f"[analytics_job] Archiving results to AWS S3 bucket: {S3_BUCKET}...")
+
+            s3 = boto3.client(
+                's3',
+                aws_access_key_id=AWS_ACCESS_KEY,
+                aws_secret_access_key=AWS_SECRET_KEY,
+                region_name=AWS_REGION
+            )
+
+            # 1. Upload the analytics JSON
+            s3_key_results = f"analytics-archive/analytics_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+            s3.put_object(
+                Bucket=S3_BUCKET,
+                Key=s3_key_results,
+                Body=results_json,
+                ContentType='application/json'
+            )
+            print(f"[analytics_job] ✅ Successfully uploaded analytics to S3: {s3_key_results}")
+
+        except Exception as e:
+            print(f"[analytics_job] ❌ Failed to upload to AWS S3: {str(e)}")
+    else:
+        print("[analytics_job] ⚠️ AWS credentials not found in environment. Skipping S3 backup.")
+
+    spark.stop()
+    print("Analytics job complete.")
+
+
+if __name__ == "__main__":
+    main()

@@ -184,3 +184,24 @@ def test_anomaly_detection_structure():
     assert "suspicious_users" in result
     assert isinstance(result["delete_spikes"],    list)
     assert isinstance(result["suspicious_users"], list)
+
+
+# ── normalize_event ────────────────────────────────────────────────────────────
+
+def test_normalize_event_flattens_logger_shape():
+    from mapreduce_fallback import normalize_event
+    raw = {
+        "event_type": "file_upload", "user_id": "u1", "latency_ms": 42,
+        "created_at": "2026-03-01T09:00:00Z",
+        "metadata": {"file_name": "a.pdf", "file_size_bytes": 10, "file_type": "pdf"},
+    }
+    e = normalize_event(raw)
+    assert (e["file_name"], e["file_size_bytes"], e["file_type"]) == ("a.pdf", 10, "pdf")
+    assert e["duration_ms"] == 42
+    assert e["timestamp"] == "2026-03-01T09:00:00Z"
+
+
+def test_normalize_event_keeps_flat_columns():
+    from mapreduce_fallback import normalize_event
+    flat = SAMPLE_EVENTS[0]
+    assert normalize_event(flat) == flat
