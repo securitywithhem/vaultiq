@@ -63,7 +63,7 @@ jobs:
             if (!enabled) {
               core.warning("Dependency Graph is disabled or not visible to this token; skipping dependency review.");
             }
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v5
         if: steps.dependency-graph.outputs.enabled == 'true'
         with:
           fail-on-severity: high
