@@ -8,15 +8,19 @@ and a logistic regression model over statistical text features.
 from __future__ import annotations
 
 import logging
+import os
 import string
 import time
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import joblib
 import numpy as np
 from scipy.stats import entropy as scipy_entropy
+
+from core.embeddings import N_EMBEDDING_FEATURES, doc_embedding_features
 
 # spaCy for NLP features
 try:
@@ -27,11 +31,19 @@ except ImportError:
     _SPACY_AVAILABLE = False
     _nlp = None
 
-# Sentence-Transformers for semantic features
+# Sentence-Transformers for semantic features. A fine-tuned checkpoint
+# (scripts/finetune_embeddings.py) is preferred over the stock model when present.
+_FINETUNED_EMBEDDING_DIR = Path(os.environ.get(
+    "EMBEDDING_MODEL_PATH", Path(__file__).parent.parent / "models" / "embedding_model"
+))
+EMBEDDING_MODEL_ID = (
+    str(_FINETUNED_EMBEDDING_DIR) if (_FINETUNED_EMBEDDING_DIR / "config.json").exists()
+    else "all-MiniLM-L6-v2"
+)
 try:
     from sentence_transformers import SentenceTransformer
     _TRANSFORMERS_AVAILABLE = True
-    _semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
+    _semantic_model = SentenceTransformer(EMBEDDING_MODEL_ID)
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
     _semantic_model = None
@@ -53,13 +65,20 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 MODELS_DIR = Path(__file__).parent.parent / "models"
-LR_MODEL_PATH = MODELS_DIR / "lr_model_calibrated.pkl"  # Use calibrated model with Platt scaling
-LR_MODEL_PATH_FALLBACK = MODELS_DIR / "lr_model.pkl"  # Fallback to uncalibrated if calibrated unavailable
+# First existing path wins: 25-feature retrain, then legacy calibrated, then legacy uncalibrated.
+LR_MODEL_PATHS = [
+    MODELS_DIR / "lr_model_v6_calibrated.pkl",
+    MODELS_DIR / "lr_model_calibrated.pkl",
+    MODELS_DIR / "lr_model.pkl",
+]
+NEURAL_HEAD_PATH = MODELS_DIR / "neural_head.pt"
+NEURAL_HEAD_META_PATH = MODELS_DIR / "neural_head_meta.json"
 ENSEMBLE_CONFIG_PATH = MODELS_DIR / "ensemble_config.json"
 
 # Ensemble blend weights — overwritten at load time from ENSEMBLE_CONFIG_PATH if present.
 _W_ROBERTA: float = 0.7
 _W_LR: float = 0.3
+_W_NN: float = 0.0
 _DETECT_THRESHOLD: float = 0.55  # Loaded from ensemble_config.json at startup
 
 # Global model references
@@ -69,13 +88,14 @@ _roberta_tokenizer = None    # legacy compat ref (last loaded)
 _lr_model = None
 _gpt2_model = None
 _gpt2_tokenizer = None
+_neural_scorer = None
 _using_dummy_lr: bool = False
 
 
 def load_models() -> None:
     """Pre-load all required models for the ensemble."""
     global _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr, _gpt2_model, _gpt2_tokenizer
-    global _W_ROBERTA, _W_LR, _DETECT_THRESHOLD, _roberta_models
+    global _W_ROBERTA, _W_LR, _W_NN, _DETECT_THRESHOLD, _roberta_models, _neural_scorer
 
     start_time = time.time()
 
@@ -87,8 +107,9 @@ def load_models() -> None:
                 _cfg = _json.load(_f)
             _W_ROBERTA = float(_cfg.get("w_roberta", _W_ROBERTA))
             _W_LR = float(_cfg.get("w_lr", _W_LR))
+            _W_NN = float(_cfg.get("w_nn", _W_NN))
             _DETECT_THRESHOLD = float(_cfg.get("threshold", _DETECT_THRESHOLD))
-            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f} threshold={_DETECT_THRESHOLD:.3f}")
+            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f} nn={_W_NN:.3f} threshold={_DETECT_THRESHOLD:.3f}")
         except Exception as e:
             logger.warning(f"Failed to load ensemble_config.json: {e}")
 
@@ -139,33 +160,27 @@ def load_models() -> None:
         except Exception as e:
             logger.warning(f"GPT-2 load failed: {e}")
 
+        if NEURAL_HEAD_PATH.exists() and NEURAL_HEAD_META_PATH.exists():
+            try:
+                from core.neural_head import NeuralScorer
+                _neural_scorer = NeuralScorer.load(NEURAL_HEAD_PATH, NEURAL_HEAD_META_PATH)
+                logger.info(f"Loaded neural head from {NEURAL_HEAD_PATH}")
+            except Exception as e:
+                logger.warning(f"Neural head load failed: {e}")
+
     # 3. Load or create Logistic Regression model (always attempted — LR needs no torch)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Try calibrated model first (with Platt scaling), fallback to uncalibrated
-    if LR_MODEL_PATH.exists():
+    for path in LR_MODEL_PATHS:
+        if not path.exists():
+            continue
         try:
-            _lr_model = joblib.load(LR_MODEL_PATH)
+            _lr_model = joblib.load(path)
             _using_dummy_lr = False
-            logger.info(f"Loaded Calibrated Logistic Regression from {LR_MODEL_PATH}")
+            logger.info(f"Loaded LR model from {path}")
+            break
         except Exception as e:
-            logger.warning(f"Calibrated LR model load failed: {e}, trying fallback...")
-            if LR_MODEL_PATH_FALLBACK.exists():
-                try:
-                    _lr_model = joblib.load(LR_MODEL_PATH_FALLBACK)
-                    _using_dummy_lr = False
-                    logger.info(f"Loaded fallback Logistic Regression from {LR_MODEL_PATH_FALLBACK}")
-                except Exception as e2:
-                    logger.warning(f"Fallback LR model load failed: {e2}")
-            else:
-                logger.warning("LR model unavailable — using statistical heuristics only.")
-    elif LR_MODEL_PATH_FALLBACK.exists():
-        try:
-            _lr_model = joblib.load(LR_MODEL_PATH_FALLBACK)
-            _using_dummy_lr = False
-            logger.info(f"Loaded Logistic Regression from {LR_MODEL_PATH_FALLBACK}")
-        except Exception as e:
-            logger.warning(f"LR model load failed: {e}")
+            logger.warning(f"LR model load failed for {path.name}: {e}")
 
     if _lr_model is None:
         logger.warning("LR model unavailable — using statistical heuristics only.")
@@ -416,6 +431,35 @@ def extract_spacy_features(text: str) -> np.ndarray:
     return np.array([passive_ratio, pos_diversity, entity_density, avg_depth])
 
 
+@lru_cache(maxsize=64)
+def _encode_sentences(text: str) -> np.ndarray | None:
+    """Sentence embeddings (up to 10 sentences > 20 chars), or None if unavailable / < 2 sentences.
+    Cached so semantic and document-embedding features encode each chunk once."""
+    if not _TRANSFORMERS_AVAILABLE or not _semantic_model or not text.strip():
+        return None
+    sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.')
+                 if s.strip() and len(s.strip()) > 20]
+    if len(sentences) < 2:
+        return None
+    try:
+        return _semantic_model.encode(sentences[:10], convert_to_numpy=True)
+    except Exception as e:
+        logger.warning(f"Semantic embedding failed: {e}")
+        return None
+
+
+@lru_cache(maxsize=64)
+def encode_document(text: str) -> np.ndarray | None:
+    """Single embedding of the whole chunk (neural head input), or None if unavailable."""
+    if not _TRANSFORMERS_AVAILABLE or not _semantic_model or not text.strip():
+        return None
+    try:
+        return _semantic_model.encode(text, convert_to_numpy=True)
+    except Exception as e:
+        logger.warning(f"Document embedding failed: {e}")
+        return None
+
+
 def extract_semantic_features(text: str) -> np.ndarray:
     """
     COMPONENT 1C — Transformers-based semantic features (3 features)
@@ -425,24 +469,8 @@ def extract_semantic_features(text: str) -> np.ndarray:
       1. Semantic variance (diversity in semantic space)
       2. Average embedding norm (writing style intensity)
     """
-    if not _TRANSFORMERS_AVAILABLE or not _semantic_model:
-        return np.zeros(3)
-
-    if not text.strip():
-        return np.zeros(3)
-
-    try:
-        sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.')
-                     if s.strip() and len(s.strip()) > 20]
-
-        if len(sentences) < 2:
-            return np.zeros(3)
-
-        sentences = sentences[:10]
-        embeddings = _semantic_model.encode(sentences, convert_to_numpy=True)
-
-    except Exception as e:
-        logger.warning(f"Semantic embedding failed: {e}")
+    embeddings = _encode_sentences(text)
+    if embeddings is None:
         return np.zeros(3)
 
     # Feature 0: Semantic Coherence (mean pairwise similarity)
@@ -467,6 +495,24 @@ def extract_semantic_features(text: str) -> np.ndarray:
     avg_norm = np.linalg.norm(avg_embedding)
 
     return np.array([semantic_coherence, semantic_variance, avg_norm])
+
+
+def extract_embedding_features(text: str) -> np.ndarray:
+    """COMPONENT 1D — Document-level embedding features (5), see core/embeddings.py."""
+    embeddings = _encode_sentences(text)
+    if embeddings is None:
+        return np.zeros(N_EMBEDDING_FEATURES)
+    return doc_embedding_features(embeddings)
+
+
+def build_feature_vector(text: str) -> np.ndarray:
+    """Full 25-feature vector: 13 statistical + 4 spaCy + 3 semantic + 5 document-embedding."""
+    return np.concatenate([
+        extract_features(text),
+        extract_spacy_features(text),
+        extract_semantic_features(text),
+        extract_embedding_features(text),
+    ])
 
 
 def roberta_score(text: str) -> float:
@@ -525,9 +571,10 @@ def lr_score(text: str) -> float:
 
 def lr_score_enhanced(features: np.ndarray) -> float:
     """
-    COMPONENT 3B — Logistic Regression on 20-feature vector
+    COMPONENT 3B — Logistic Regression on the build_feature_vector() output
 
-    Accepts 20 features (13 custom + 4 spaCy + 3 semantic)
+    Feature order is append-only, so a model trained on an older, shorter vector
+    (e.g. the 20-feature model) is scored on the leading features it was trained on.
     Returns probability [0, 1]
     """
     if not is_model_loaded():
@@ -535,11 +582,27 @@ def lr_score_enhanced(features: np.ndarray) -> float:
 
     try:
         assert _lr_model is not None, "LR Model not loaded"
-        features_2d = features.reshape(1, -1)
-        proba = _lr_model.predict_proba(features_2d)
+        n_expected = getattr(_lr_model, "n_features_in_", None)
+        if n_expected is not None and n_expected < features.shape[0]:
+            features = features[:n_expected]
+        proba = _lr_model.predict_proba(features.reshape(1, -1))
         return float(proba[0][1])
     except Exception as e:
-        logger.warning(f"LR scoring failed on 20-feature vector: {e}")
+        logger.warning(f"LR scoring failed on {features.shape[0]}-feature vector: {e}")
+        return 0.5
+
+
+def neural_score(text: str, features: np.ndarray) -> float:
+    """COMPONENT 3C — Neural head on [chunk embedding ‖ features]; 0.5 when unavailable."""
+    if _neural_scorer is None:
+        return 0.5
+    embedding = encode_document(text)
+    if embedding is None or features.shape[0] < _neural_scorer.n_features:
+        return 0.5
+    try:
+        return float(_neural_scorer.predict_proba(embedding, features[:_neural_scorer.n_features])[0])
+    except Exception as e:
+        logger.warning(f"Neural head scoring failed: {e}")
         return 0.5
 
 
@@ -558,10 +621,10 @@ def ensemble_score(text: str) -> float:
 
 def detect(chunks: list[str]) -> dict[str, Any]:
     """
-    COMPONENT 5 — Main entry point (UPDATED for 20 features)
+    COMPONENT 5 — Main entry point
 
-    Runs the meta-ensemble over chunks and produces document-level verdict.
-    Now uses 20-feature vector (13 custom + 4 spaCy + 3 semantic).
+    Runs the meta-ensemble over chunks and produces document-level verdict
+    using build_feature_vector().
     """
     if not chunks:
         return {
@@ -578,18 +641,12 @@ def detect(chunks: list[str]) -> dict[str, Any]:
         if not chunk.strip():
             continue
         try:
-            # Extract all 20 features
-            custom_feats = extract_features(chunk)           # 13
-            spacy_feats = extract_spacy_features(chunk)      # 4
-            semantic_feats = extract_semantic_features(chunk) # 3
-
-            # Combine: 13 + 4 + 3 = 20 features
-            all_features = np.concatenate([custom_feats, spacy_feats, semantic_feats])
-
-            # Use RoBERTa + LR ensemble
+            all_features = build_feature_vector(chunk)
             r_score = roberta_score(chunk)
             l_score = lr_score_enhanced(all_features)
             score = _W_ROBERTA * r_score + _W_LR * l_score
+            if _W_NN > 0:
+                score += _W_NN * neural_score(chunk, all_features)
 
             chunk_scores.append(score)
         except Exception as e:

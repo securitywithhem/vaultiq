@@ -1,0 +1,65 @@
+{
+  "n_features": 25,
+  "features": {
+    "custom": 13,
+    "spacy": 4,
+    "semantic": 3,
+    "doc_embedding": [
+      "mean_max_pool_divergence",
+      "redundancy",
+      "centroid_spread",
+      "pc1_variance_ratio",
+      "attention_entropy"
+    ]
+  },
+  "n_train": 24000,
+  "n_val": 3000,
+  "n_test": 3000,
+  "test_domains": "HC3 medicine + wiki_csai (not seen in training)",
+  "results": {
+    "baseline_20": {
+      "val": {
+        "accuracy": 0.986,
+        "precision": 0.9834,
+        "recall": 0.9887,
+        "f1": 0.986,
+        "roc_auc": 0.9991
+      },
+      "test_heldout_domains": {
+        "accuracy": 0.879,
+        "precision": 0.8112,
+        "recall": 0.988,
+        "f1": 0.8909,
+        "roc_auc": 0.9843
+      }
+    },
+    "enhanced_25": {
+      "val": {
+        "accuracy": 0.9853,
+        "precision": 0.9815,
+        "recall": 0.9893,
+        "f1": 0.9854,
+        "roc_auc": 0.9991
+      },
+      "test_heldout_domains": {
+        "accuracy": 0.876,
+        "precision": 0.8069,
+        "recall": 0.9887,
+        "f1": 0.8886,
+        "roc_auc": 0.9848
+      }
+    }
+  },
+  "clf_params": {
+    "max_iter": 800,
+    "learning_rate": 0.05,
+    "max_depth": 8,
+    "min_samples_leaf": 60,
+    "l2_regularization": 1.5,
+    "random_state": 42,
+    "class_weight": "balanced",
+    "early_stopping": true,
+    "validation_fraction": 0.12,
+    "n_iter_no_change": 40
+  }
+}

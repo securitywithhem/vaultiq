@@ -1,27 +1,75 @@
 {
-  "w_roberta": 0.45,
-  "w_lr": 0.55,
-  "threshold": 0.5199999999999998,
-  "eval_samples": 2000,
+  "w_roberta": 0.9,
+  "w_lr": 0.1,
+  "w_nn": 0.0,
+  "threshold": 0.5,
+  "eval_samples": 6000,
+  "eval": "HC3 serving-style chunks; tuned on val split, test = held-out domains (medicine, wiki_csai)",
   "individual": {
     "roberta_only": {
-      "accuracy": 0.9625,
-      "f1": 0.9621403331650681,
-      "auc": 0.991588
+      "val": {
+        "accuracy": 0.993,
+        "precision": 0.9953,
+        "recall": 0.9907,
+        "f1": 0.993,
+        "roc_auc": 0.9992
+      },
+      "test_heldout_domains": {
+        "accuracy": 0.9687,
+        "precision": 0.953,
+        "recall": 0.986,
+        "f1": 0.9692,
+        "roc_auc": 0.9921
+      }
     },
     "lr_only": {
-      "accuracy": 0.935,
-      "f1": 0.9363369245837413,
-      "auc": 0.9854970000000001
+      "val": {
+        "accuracy": 0.9853,
+        "precision": 0.9815,
+        "recall": 0.9893,
+        "f1": 0.9854,
+        "roc_auc": 0.9991
+      },
+      "test_heldout_domains": {
+        "accuracy": 0.876,
+        "precision": 0.8069,
+        "recall": 0.9887,
+        "f1": 0.8886,
+        "roc_auc": 0.9848
+      }
+    },
+    "nn_only": {
+      "val": {
+        "accuracy": 0.9917,
+        "precision": 0.99,
+        "recall": 0.9933,
+        "f1": 0.9917,
+        "roc_auc": 0.9997
+      },
+      "test_heldout_domains": {
+        "accuracy": 0.843,
+        "precision": 0.7664,
+        "recall": 0.9867,
+        "f1": 0.8627,
+        "roc_auc": 0.977
+      }
     }
   },
   "ensemble_tuned": {
-    "w_roberta": 0.45,
-    "threshold": 0.5199999999999998,
-    "accuracy": 0.983,
-    "precision": 0.9859154929577465,
-    "recall": 0.98,
-    "f1": 0.9829488465396189,
-    "roc_auc": 0.99804
-  }
+    "val": {
+      "accuracy": 0.9963,
+      "precision": 0.9953,
+      "recall": 0.9973,
+      "f1": 0.9963,
+      "roc_auc": 0.9994
+    },
+    "test_heldout_domains": {
+      "accuracy": 0.9697,
+      "precision": 0.9496,
+      "recall": 0.992,
+      "f1": 0.9703,
+      "roc_auc": 0.9928
+    }
+  },
+  "previous_system_on_same_eval": null
 }
