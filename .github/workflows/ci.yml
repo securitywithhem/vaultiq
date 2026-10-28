@@ -38,7 +38,7 @@ jobs:
       spark: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.spark == 'true' }}
       docker: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docker == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -101,7 +101,7 @@ jobs:
       HDFS_ENABLED: 'false'
       AI_SERVICE_URL: http://localhost:8001
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -133,7 +133,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -174,7 +174,7 @@ jobs:
       PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
       HF_HUB_DISABLE_TELEMETRY: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.AI_PYTHON_VERSION }}
@@ -202,7 +202,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -245,7 +245,7 @@ jobs:
       - name: Skip (no changes affecting this image)
         if: env.SHOULD_BUILD != 'true'
         run: echo "No changes for ${{ matrix.service }}; skipping image build."
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.SHOULD_BUILD == 'true'
       - uses: docker/setup-buildx-action@v3
         if: env.SHOULD_BUILD == 'true'
