@@ -39,7 +39,7 @@ async function sql(description, query) {
       console.log(`  ~ ${description} (already exists — skipped)`);
       return;
     }
-    throw new Error(`${description}: ${msg}`);
+    throw new Error(`${description}: ${msg}`, { cause: err });
   }
 }
 

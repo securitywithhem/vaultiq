@@ -1,102 +1,146 @@
+// hdfsLogger: logEvent queues to Redis; flushEventBatch drains the queue to
+// HDFS (primary) with Supabase as fallback, re-queueing if both fail.
+
 jest.mock('axios');
+
+// In-memory stand-in for the Redis list used as the event queue
+jest.mock('redis', () => {
+  const list = [];
+  const client = {
+    list,
+    on: jest.fn(),
+    connect: jest.fn().mockResolvedValue(),
+    quit: jest.fn().mockResolvedValue(),
+    lPush: jest.fn(async (_key, value) => list.unshift(value)),
+    rPop: jest.fn(async () => (list.length ? list.pop() : null)),
+    lLen: jest.fn(async () => list.length),
+  };
+  return { createClient: () => client };
+});
 
 describe('hdfsLogger', () => {
   const originalEnv = process.env;
 
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  // test_1: logEvent does not throw when both HDFS and Supabase are unavailable
-  test('does not throw when both HDFS and Supabase are unavailable', async () => {
+  // Module reads env at load time, so reload it for every test
+  function loadLogger(env) {
     jest.resetModules();
     process.env = {
       ...originalEnv,
-      HDFS_WEBHDFS_URL: 'http://localhost:9870/webhdfs/v1',
       SUPABASE_URL: 'http://localhost:54321',
-      SUPABASE_SERVICE_KEY: 'test-key'
+      SUPABASE_SERVICE_KEY: 'test-key',
+      ...env,
     };
-
     const axios = require('axios');
-    axios.put = jest.fn().mockRejectedValue(new Error('HDFS unreachable'));
-    axios.post = jest.fn().mockRejectedValue(new Error('Supabase unreachable'));
+    axios.put = jest.fn().mockResolvedValue({ status: 201 });
+    axios.post = jest.fn().mockResolvedValue({ status: 201 });
+    const redisClient = require('redis').createClient();
+    const logger = require('../utils/hdfsLogger');
+    return { ...logger, axios, redisClient };
+  }
 
-    const { logEvent } = require('../utils/hdfsLogger');
+  beforeEach(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    jest.restoreAllMocks();
+  });
+
+  test('logEvent queues a normalised event in Redis', async () => {
+    const { logEvent, redisClient } = loadLogger({});
+
+    await logEvent('file_download', { userId: 'u2', fileName: 'doc.pdf', durationMs: 12 });
+
+    expect(redisClient.list).toHaveLength(1);
+    const event = JSON.parse(redisClient.list[0]);
+    expect(event).toMatchObject({
+      event_type: 'file_download',
+      user_id: 'u2',
+      latency_ms: 12,
+      metadata: expect.objectContaining({ file_name: 'doc.pdf' }),
+    });
+    expect(event.timestamp).toEqual(expect.any(String));
+  });
+
+  test('logEvent does not throw when Redis is unavailable', async () => {
+    const { logEvent, redisClient } = loadLogger({});
+    redisClient.lPush.mockRejectedValueOnce(new Error('Redis down'));
+    redisClient.lLen.mockRejectedValueOnce(new Error('Redis down'));
 
     await expect(logEvent('file_upload', { userId: 'u1' })).resolves.toBeUndefined();
   });
 
-  // test_2: logEvent calls _writeToSupabase when HDFS_WEBHDFS_URL env var is not set
-  test('calls Supabase directly when HDFS_WEBHDFS_URL is not set', async () => {
-    jest.resetModules();
-    const env = { ...originalEnv };
-    delete env.HDFS_WEBHDFS_URL;
-    process.env = {
-      ...env,
-      SUPABASE_URL: 'http://localhost:54321',
-      SUPABASE_SERVICE_KEY: 'test-key'
-    };
+  test('flush writes to Supabase directly when HDFS is disabled', async () => {
+    const { logEvent, flushEventBatch, axios } = loadLogger({ HDFS_ENABLED: 'false' });
 
-    const axios = require('axios');
-    axios.put = jest.fn();
-    axios.post = jest.fn().mockResolvedValue({ status: 201 });
-
-    const { logEvent } = require('../utils/hdfsLogger');
-
-    await logEvent('file_download', { userId: 'u2', fileName: 'doc.pdf' });
+    await logEvent('file_download', { userId: 'u2' });
+    await flushEventBatch();
 
     expect(axios.put).not.toHaveBeenCalled();
     expect(axios.post).toHaveBeenCalledTimes(1);
-    expect(axios.post.mock.calls[0][0]).toContain('/rest/v1/event_logs');
+    expect(axios.post.mock.calls[0][0]).toBe('http://localhost:54321/rest/v1/event_logs');
+    expect(axios.post.mock.calls[0][1]).toHaveLength(1);
   });
 
-  // test_3: logEvent calls _writeToHDFS first, falls back to Supabase if HDFS throws
-  test('tries HDFS first and falls back to Supabase when HDFS throws', async () => {
-    jest.resetModules();
-    process.env = {
-      ...originalEnv,
+  test('flush appends to HDFS and skips Supabase when HDFS succeeds', async () => {
+    const { logEvent, flushEventBatch, axios } = loadLogger({
+      HDFS_ENABLED: 'true',
       HDFS_WEBHDFS_URL: 'http://localhost:9870/webhdfs/v1',
-      SUPABASE_URL: 'http://localhost:54321',
-      SUPABASE_SERVICE_KEY: 'test-key'
-    };
+    });
 
-    const axios = require('axios');
-    // HDFS PUT fails with a non-403 error, triggering fallback
-    axios.put = jest.fn().mockRejectedValue(new Error('Connection refused'));
-    axios.post = jest.fn().mockResolvedValue({ status: 201 });
+    await logEvent('file_upload', { userId: 'u1' });
+    await flushEventBatch();
 
-    const { logEvent } = require('../utils/hdfsLogger');
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post.mock.calls[0][0]).toContain('op=APPEND');
+  });
+
+  test('flush falls back to Supabase when HDFS is unreachable', async () => {
+    const { logEvent, flushEventBatch, axios } = loadLogger({
+      HDFS_ENABLED: 'true',
+      HDFS_WEBHDFS_URL: 'http://localhost:9870/webhdfs/v1',
+    });
+    axios.post
+      .mockRejectedValueOnce(new Error('Connection refused')) // HDFS APPEND
+      .mockResolvedValueOnce({ status: 201 });                // Supabase
 
     await logEvent('file_delete', { userId: 'u3' });
+    await flushEventBatch();
 
-    // HDFS PUT was attempted
-    expect(axios.put).toHaveBeenCalled();
-    // Supabase POST was called as fallback
-    expect(axios.post).toHaveBeenCalledTimes(1);
-    expect(axios.post.mock.calls[0][0]).toContain('/rest/v1/event_logs');
+    expect(axios.put).not.toHaveBeenCalled(); // network error is not a "file missing" error
+    expect(axios.post).toHaveBeenCalledTimes(2);
+    expect(axios.post.mock.calls[1][0]).toContain('/rest/v1/event_logs');
   });
 
-  // test_4: logEvent builds the correct log path with today's UTC date in YYYY-MM-DD format
-  test('builds log path with today UTC date in YYYY-MM-DD format', async () => {
-    jest.resetModules();
-    process.env = {
-      ...originalEnv,
+  test('creates today\'s HDFS log file when APPEND reports it missing', async () => {
+    const { logEvent, flushEventBatch, axios } = loadLogger({
+      HDFS_ENABLED: 'true',
       HDFS_WEBHDFS_URL: 'http://localhost:9870/webhdfs/v1',
       HDFS_USER: 'hadoop',
-      SUPABASE_URL: 'http://localhost:54321',
-      SUPABASE_SERVICE_KEY: 'test-key'
-    };
-
-    const axios = require('axios');
-    axios.put = jest.fn().mockResolvedValue({ status: 201 });
-    axios.post = jest.fn().mockResolvedValue({ status: 200 });
-
-    const { logEvent } = require('../utils/hdfsLogger');
+    });
+    axios.post.mockRejectedValueOnce(Object.assign(new Error('Not found'), { response: { status: 404 } }));
 
     await logEvent('ai_detection', { userId: 'u4' });
+    await flushEventBatch();
 
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+    expect(axios.put).toHaveBeenCalledTimes(1);
     const putUrl = axios.put.mock.calls[0][0];
     expect(putUrl).toContain(`/vaultiq/logs/${today}/events.jsonl`);
+    expect(putUrl).toContain('op=CREATE');
+    expect(putUrl).toContain('user.name=hadoop');
+  });
+
+  test('re-queues events when both HDFS and Supabase fail', async () => {
+    const { logEvent, flushEventBatch, axios, redisClient } = loadLogger({ HDFS_ENABLED: 'false' });
+    axios.post.mockRejectedValue(new Error('Supabase unreachable'));
+
+    await logEvent('file_upload', { userId: 'u1' });
+    await logEvent('file_upload', { userId: 'u2' });
+    await flushEventBatch();
+
+    expect(redisClient.list).toHaveLength(2);
   });
 });
