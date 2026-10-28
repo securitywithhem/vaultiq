@@ -139,6 +139,8 @@ function scheduleNextFlush() {
   flushTimer = setTimeout(() => {
     flushEventBatch();
   }, BATCH_TIMEOUT_MS);
+  // Don't keep the process alive just for the flush timer (shutdown flushes explicitly)
+  flushTimer.unref();
 }
 
 // Start flushing on startup
@@ -205,4 +207,4 @@ async function gracefulShutdown() {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
-module.exports = { logEvent };
+module.exports = { logEvent, flushEventBatch };

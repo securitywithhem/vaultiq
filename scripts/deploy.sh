@@ -3,12 +3,14 @@
 # VaultIQ — EC2 Production Deployment Script
 # Run on EC2 to deploy or update VaultIQ.
 # Usage: ./scripts/deploy.sh
+#        DEPLOY_REF=<commit-sha> ./scripts/deploy.sh   # deploy/roll back to an exact commit
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
-PROJECT_DIR="/home/ubuntu/vaultiq"
+PROJECT_DIR="${PROJECT_DIR:-/home/ubuntu/vaultiq}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_REF="${DEPLOY_REF:-}"
 
 echo "════════════════════════════════════════════════════════════"
 echo " VaultIQ — Production Deployment"
@@ -18,8 +20,17 @@ echo "════════════════════════�
 # ── Pull Latest Code ─────────────────────────────────────────────────────────
 
 echo ""
-echo "[deploy] Pulling latest code from main..."
-cd "$PROJECT_DIR" && git pull origin main
+cd "$PROJECT_DIR"
+if [ -n "$DEPLOY_REF" ]; then
+  echo "[deploy] Checking out ${DEPLOY_REF}..."
+  git fetch --quiet --tags origin
+  # Branch names resolve to the freshly fetched remote branch; SHAs/tags as-is
+  git checkout --quiet --detach "$(git rev-parse --verify --quiet "origin/$DEPLOY_REF" || echo "$DEPLOY_REF")"
+else
+  echo "[deploy] Pulling latest code from main..."
+  git checkout --quiet main && git pull origin main
+fi
+echo "[deploy] Deploying commit $(git rev-parse --short HEAD)"
 
 # ── Stop Old Containers ──────────────────────────────────────────────────────
 

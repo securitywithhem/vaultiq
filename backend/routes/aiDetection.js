@@ -19,7 +19,7 @@ const AI_STORE_PATH = path.resolve(__dirname, '../../backend/data/ai_detections.
 function appendAIResult(userId, results) {
   try {
     let store = { detections: [] };
-    try { store = JSON.parse(fs.readFileSync(AI_STORE_PATH, 'utf8')); } catch {}
+    try { store = JSON.parse(fs.readFileSync(AI_STORE_PATH, 'utf8')); } catch { /* missing or corrupt store — start fresh */ }
     for (const r of results) {
       if (r.status === 'error') continue;
       store.detections.push({
@@ -270,7 +270,7 @@ router.post('/check', authenticateToken, async (req, res) => {
 router.get('/history', authenticateToken, (req, res) => {
   try {
     let store = { detections: [] };
-    try { store = JSON.parse(fs.readFileSync(AI_STORE_PATH, 'utf8')); } catch {}
+    try { store = JSON.parse(fs.readFileSync(AI_STORE_PATH, 'utf8')); } catch { /* missing or corrupt store — start fresh */ }
     const userDetections = (store.detections || [])
       .filter(d => d.user_id === req.user.id)
       .reverse(); // most recent first

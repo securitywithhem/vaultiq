@@ -1,0 +1,7 @@
+# Keep secrets and host-built artefacts out of the build context
+.env
+.env.*
+node_modules
+build
+coverage
+*.log

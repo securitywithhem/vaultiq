@@ -55,7 +55,7 @@ async function uploadToS3(fileBuffer, collectionId, submissionId, filename) {
     return s3Path;
   } catch (error) {
     console.error("S3 upload error:", error);
-    throw new Error(`Failed to upload ${filename} to S3: ${error.message}`);
+    throw new Error(`Failed to upload ${filename} to S3: ${error.message}`, { cause: error });
   }
 }
 
@@ -99,7 +99,7 @@ async function callAIDetection(fileBuffer, filename) {
     };
   } catch (error) {
     console.error("FastAPI detection error:", error.message);
-    throw new Error(`AI detection failed: ${error.message}`);
+    throw new Error(`AI detection failed: ${error.message}`, { cause: error });
   }
 }
 

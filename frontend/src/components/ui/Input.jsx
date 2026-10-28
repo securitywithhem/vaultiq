@@ -23,18 +23,23 @@ const Input = React.forwardRef(
       error,
       rightElement,
       className = '',
+      id,
       ...props
     },
     ref
   ) => {
     const hasLabelRow = label || labelRight;
+    // Associate the <label> (and error text) with the input for assistive tech
+    const generatedId = React.useId();
+    const inputId = id || generatedId;
+    const errorId = `${inputId}-error`;
 
     return (
       <div className="w-full">
         {hasLabelRow && (
           <div className="flex items-center justify-between mb-1.5">
             {label && (
-              <label className="block text-sm font-medium text-gray-700 select-none">
+              <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 select-none">
                 {label}
               </label>
             )}
@@ -45,6 +50,9 @@ const Input = React.forwardRef(
         <div className="relative">
           <input
             ref={ref}
+            id={inputId}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
             type={type}
             value={value}
             onChange={onChange}
@@ -74,7 +82,7 @@ const Input = React.forwardRef(
         </div>
 
         {error && (
-          <p className="mt-1.5 text-xs font-medium text-red-500">{error}</p>
+          <p id={errorId} className="mt-1.5 text-xs font-medium text-red-500">{error}</p>
         )}
       </div>
     );

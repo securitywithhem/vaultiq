@@ -160,7 +160,7 @@ const Login = () => {
             />
 
             <div className="pt-1">
-              <Button type="submit" isLoading={isLoading}>
+              <Button type="submit" isLoading={isLoading} disabled={!email || !password}>
                 Sign In
               </Button>
             </div>

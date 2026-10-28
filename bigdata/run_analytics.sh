@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # VaultIQ Analytics Runner (Option A - Simplified)
-# Runs the Pandas-based analytics job daily
+# Runs the pure-Python analytics job (no Spark cluster required) daily
 # Schedule with cron: 0 2 * * * /path/to/bigdata/run_analytics.sh
 
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_PATH="${PROJECT_ROOT}/.venv"
-ANALYTICS_SCRIPT="${PROJECT_ROOT}/bigdata/analytics_simple.py"
+ANALYTICS_SCRIPT="${PROJECT_ROOT}/bigdata/mapreduce_fallback.py"
 LOG_DIR="${PROJECT_ROOT}/bigdata/logs"
 LOG_FILE="${LOG_DIR}/analytics.log"
 

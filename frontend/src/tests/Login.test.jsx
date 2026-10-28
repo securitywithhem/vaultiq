@@ -41,7 +41,7 @@ beforeEach(() => jest.clearAllMocks());
 test('renders email, password inputs and Sign In button', () => {
   renderLogin();
   expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
-  expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+  expect(screen.getByLabelText(/^password/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
 });
 
@@ -53,7 +53,7 @@ test('submit button is disabled when fields are empty', () => {
 test('submit button enables when both fields are filled', async () => {
   renderLogin();
   await userEvent.type(screen.getByLabelText(/email address/i), 'a@b.com');
-  await userEvent.type(screen.getByLabelText(/password/i), 'secret');
+  await userEvent.type(screen.getByLabelText(/^password/i), 'secret');
   expect(screen.getByRole('button', { name: /sign in/i })).not.toBeDisabled();
 });
 
@@ -62,26 +62,31 @@ test('calls login() and navigates to /dashboard on success', async () => {
   renderLogin();
 
   await userEvent.type(screen.getByLabelText(/email address/i), 'a@b.com');
-  await userEvent.type(screen.getByLabelText(/password/i), 'Test@1234');
+  await userEvent.type(screen.getByLabelText(/^password/i), 'Test@1234');
   fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
   await waitFor(() => {
     expect(mockLogin).toHaveBeenCalledWith('a@b.com', 'Test@1234');
-    expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
+    expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true });
   });
 });
 
 test('shows error toast when login() rejects', async () => {
   const toast = require('react-hot-toast').default;
-  mockLogin.mockRejectedValueOnce(new Error('401'));
+  // Shape of an axios error for the backend's 401 response
+  mockLogin.mockRejectedValueOnce(
+    Object.assign(new Error('Request failed with status code 401'), {
+      response: { status: 401, data: { error: 'Invalid credentials' } }
+    })
+  );
   renderLogin();
 
   await userEvent.type(screen.getByLabelText(/email address/i), 'a@b.com');
-  await userEvent.type(screen.getByLabelText(/password/i), 'badpass');
+  await userEvent.type(screen.getByLabelText(/^password/i), 'badpass');
   fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
   await waitFor(() => {
-    expect(toast.error).toHaveBeenCalledWith('Invalid email or password');
+    expect(toast.error).toHaveBeenCalledWith('Invalid credentials');
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
@@ -98,7 +103,7 @@ test('toggles password visibility', async () => {
   expect(pwInput).toHaveAttribute('type', 'password');
 });
 
-test('link to /register is present', () => {
+test('link to /signup is present', () => {
   renderLogin();
-  expect(screen.getByRole('link', { name: /create one now/i })).toHaveAttribute('href', '/register');
+  expect(screen.getByRole('link', { name: /sign up for free/i })).toHaveAttribute('href', '/signup');
 });

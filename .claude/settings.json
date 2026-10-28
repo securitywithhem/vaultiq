@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph update --quiet --skip-flows",
+            "command": "code-review-graph update --skip-flows >/dev/null 2>&1 || true",
             "timeout": 5000
           }
         ]

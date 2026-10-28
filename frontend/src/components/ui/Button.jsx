@@ -39,6 +39,7 @@ const Button = ({
   size = 'md',
   fullWidth = true,
   isLoading = false,
+  disabled = false,
   className = '',
   ...props
 }) => {
@@ -74,7 +75,7 @@ const Button = ({
 
   return (
     <button
-      disabled={isLoading || props.disabled}
+      disabled={isLoading || disabled}
       className={[
         'inline-flex items-center justify-center rounded-xl',
         'transition-all duration-200 ease-out select-none',
