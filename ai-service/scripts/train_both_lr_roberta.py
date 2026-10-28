@@ -202,7 +202,6 @@ def train_lr_model(rows: List[Dict]) -> tuple:
 
     # Calibrate
     print("\n🔧 Calibrating (isotonic, cv=5)…")
-    from sklearn.pipeline import Pipeline
 
     cal_pipe = Pipeline([
         ("scaler", RobustScaler()),
