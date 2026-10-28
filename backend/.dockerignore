@@ -1,0 +1,12 @@
+# Keep secrets and host-built artefacts out of the image (env is injected at runtime via env_file)
+.env
+.env.*
+!.env.example
+node_modules
+coverage
+logs
+uploads
+*.log
+data/ai_detections.json
+tests
+scripts/spark-jobs/__pycache__
