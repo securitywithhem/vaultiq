@@ -247,7 +247,7 @@ jobs:
         run: echo "No changes for ${{ matrix.service }}; skipping image build."
       - uses: actions/checkout@v4
         if: env.SHOULD_BUILD == 'true'
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: env.SHOULD_BUILD == 'true'
       - uses: docker/build-push-action@v6
         if: env.SHOULD_BUILD == 'true'
