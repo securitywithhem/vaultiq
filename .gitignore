@@ -86,3 +86,6 @@ SERVICES_LIVE.txt
 START_NOW.txt
 START_ALL.sh
 bigdata/results/
+
+# Redis snapshots
+dump.rdb
