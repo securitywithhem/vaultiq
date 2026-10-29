@@ -18,7 +18,7 @@
     "react-router-dom": "^6.30.3",
     "react-scripts": "^5.0.1",
     "recharts": "^3.8.1",
-    "pdfjs-dist": "^4.0.269",
+    "pdfjs-dist": "^6.4.299",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
