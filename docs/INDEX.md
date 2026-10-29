@@ -26,11 +26,8 @@ docs/
 ├── INDEX.md ...................... (you are here)
 ├── architecture/
 │   └── ai-detection.md ........... AI detection pipeline technical spec
-├── api/
-│   └── backend-api.md ............ Complete REST API reference
-└── superpowers/            ......... Claude Code session specs & plans
-    ├── specs/
-    └── plans/
+└── api/
+    └── backend-api.md ............ Complete REST API reference
 ```
 
 ---
@@ -86,13 +83,6 @@ docs/
 |------|---------|----------|
 | [ai-detection.md](architecture/ai-detection.md) | AI ensemble pipeline architecture, RoBERTa + LR + feature engineering | ML engineers, architects |
 | [backend-api.md](api/backend-api.md) | Complete REST API specification with request/response examples | All backend developers |
-
-### **Superpowers Sessions** (Claude Code only)
-
-| Folder | Purpose |
-|--------|---------|
-| [superpowers/specs/](superpowers/specs/) | Architecture & design specifications |
-| [superpowers/plans/](superpowers/plans/) | Implementation plans and task breakdown |
 
 ---
 
@@ -166,9 +156,8 @@ vaultiq/
 │   ├── INDEX.md ................... (you are here)
 │   ├── architecture/
 │   │   └── ai-detection.md ........ AI pipeline details
-│   ├── api/
-│   │   └── backend-api.md ......... API reference
-│   └── superpowers/ ............... Claude Code sessions
+│   └── api/
+│       └── backend-api.md ......... API reference
 │
 ├── frontend/ ...................... React application
 │   ├── src/
@@ -226,7 +215,6 @@ For questions about:
 - **Setup & deployment** → See [README.md](../README.md)
 - **API usage** → See [backend-api.md](api/backend-api.md)
 - **AI detection** → See [ai-detection.md](architecture/ai-detection.md)
-- **Architecture decisions** → See [superpowers/](superpowers/) folder
 - **Code implementation** → Check the corresponding source file
 
 ---

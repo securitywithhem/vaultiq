@@ -89,3 +89,6 @@ bigdata/results/
 
 # Redis snapshots
 dump.rdb
+
+# Superpowers brainstorm state
+.superpowers/
