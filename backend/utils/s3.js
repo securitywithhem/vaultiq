@@ -12,7 +12,12 @@ const s3Client = new S3Client({
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
+  },
+  // Optional: S3-compatible storage (Supabase Storage, MinIO) instead of AWS
+  ...(process.env.S3_ENDPOINT && {
+    endpoint: process.env.S3_ENDPOINT,
+    forcePathStyle: true
+  })
 });
 
 const getBucket = () => process.env.S3_BUCKET_NAME;
@@ -24,7 +29,8 @@ async function uploadToS3(key, buffer, mimeType) {
       Key: key,
       Body: buffer,
       ContentType: mimeType || 'application/octet-stream',
-      ServerSideEncryption: 'AES256'
+      // AWS-only header; files are already AES-256 encrypted before this point
+      ...(!process.env.S3_ENDPOINT && { ServerSideEncryption: 'AES256' })
       // Note: IV is now prepended to buffer, no need to store in metadata
     });
     return await s3Client.send(command);

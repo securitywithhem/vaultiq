@@ -7,9 +7,8 @@
 const { supabase } = require("../data/supabaseClient");
 const { callAIDetection } = require("./collectionHelpers");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
-
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const { GetObjectCommand } = require("@aws-sdk/client-s3");
+const { s3Client } = require("./s3");
 
 /**
  * Background function to process detections

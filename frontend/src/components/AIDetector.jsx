@@ -10,15 +10,18 @@ const MAX_FILES = 5;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-const VerdictBadge = ({ verdict }) => {
-  const cfg = {
+const VerdictBadge = ({ verdict, failed }) => {
+  // A failed scan has no verdict — never let it fall through to "AI Generated"
+  const cfg = failed ? null : {
     human: { label: 'Human Written', bg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' },
     mixed: { label: 'Mixed Content', bg: 'bg-amber-500/10 border-amber-500/20 text-amber-400' },
-  }[verdict] ?? { label: 'AI Generated', bg: 'bg-red-500/10 border-red-500/20 text-red-400' };
+    ai_generated: { label: 'AI Generated', bg: 'bg-red-500/10 border-red-500/20 text-red-400' },
+  }[verdict];
+  const { label, bg } = cfg ?? { label: failed ? 'Scan Failed' : 'Unknown', bg: 'bg-gray-800 border-gray-700 text-gray-400' };
 
   return (
-    <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${cfg.bg}`}>
-      {cfg.label}
+    <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${bg}`}>
+      {label}
     </span>
   );
 };
@@ -467,7 +470,7 @@ export default function AIDetector() {
                       <p className="text-[10px] font-bold text-violet-400 uppercase tracking-widest mb-1">Source File</p>
                       <h4 className="text-sm font-bold text-white truncate">{res.filename}</h4>
                     </div>
-                    <VerdictBadge verdict={res.verdict} />
+                    <VerdictBadge verdict={res.verdict} failed={res.status === 'error'} />
                   </div>
 
                   <div className="flex items-center gap-6 p-4 bg-gray-950/50 border border-gray-800/60 rounded-2xl">
@@ -491,6 +494,12 @@ export default function AIDetector() {
                       )}
                     </div>
                   </div>
+
+                  {res.status === 'error' && (
+                    <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-xl text-[10px] font-semibold text-red-400 leading-relaxed">
+                      ✕ Could not analyse this file: {res.error || 'unknown error'}
+                    </div>
+                  )}
 
                   {res.warning && (
                     <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-[10px] font-semibold text-amber-400 leading-relaxed italic">

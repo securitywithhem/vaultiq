@@ -102,7 +102,8 @@ async function flushEventBatch() {
     try {
       await axios.post(
         `${SUPABASE_URL}/rest/v1/event_logs`,
-        events,
+        // event_logs has created_at, not timestamp (that field is for HDFS JSONL only)
+        events.map(({ timestamp: _timestamp, ...row }) => row),
         {
           headers: {
             apikey: SUPABASE_SERVICE_KEY,

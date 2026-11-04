@@ -40,8 +40,8 @@ def _extract_text_layer(file_path: str, file_type: str) -> list[dict[str, str]]:
                     text = page.extract_text()
                     if text and text.strip():
                         chunks.append({"type": "text_body", "text": text.strip()})
-        except ImportError:
-            logger.warning("pdfplumber not installed. Skipping text layer extraction for PDF.")
+        except ImportError as exc:
+            raise ImportError("pdfplumber is not installed on the AI service; cannot read PDF text.") from exc
     elif file_type == ".docx":
         try:
             from docx import Document
@@ -49,8 +49,8 @@ def _extract_text_layer(file_path: str, file_type: str) -> list[dict[str, str]]:
             for para in doc.paragraphs:
                 if para.text.strip():
                     chunks.append({"type": "text_body", "text": para.text.strip()})
-        except ImportError:
-            logger.warning("python-docx not installed. Skipping text extraction for DOCX.")
+        except ImportError as exc:
+            raise ImportError("python-docx is not installed on the AI service; cannot read DOCX text.") from exc
     elif file_type == ".txt":
         try:
             with open(file_path, "r", encoding="utf-8") as f:

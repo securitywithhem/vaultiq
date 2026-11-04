@@ -1,9 +1,8 @@
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { v4: uuidv4 } = require("uuid");
 const axios = require("axios");
 const FormData = require("form-data");
-
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const { s3Client } = require("./s3");
 
 /**
  * Generate a unique, unguessable 12-character share code

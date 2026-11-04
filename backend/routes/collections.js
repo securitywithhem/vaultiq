@@ -3,11 +3,10 @@ const { generateShareCode } = require("../utils/collectionHelpers");
 const { createClient } = require("@supabase/supabase-js");
 const { processDetectionsAsync } = require("../utils/detectionHelper");
 const { authenticateToken } = require("../middleware/auth");
-const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { s3Client } = require("../utils/s3");
 const logger = require("../utils/logger");
-
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
 const router = express.Router();
 

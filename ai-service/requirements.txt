@@ -14,6 +14,11 @@ datasets==2.16.1
 pandas==2.1.4
 pyarrow==14.0.1
 tqdm==4.66.1
+# Document text extraction (core/extractor.py) — without these, PDF/DOCX uploads yield no text
+python-docx==1.2.0
+pdfplumber==0.11.10
+pdf2image==1.17.0
+pytesseract==0.3.13
 # spaCy is required by core/preprocessor.py (sentence segmentation) — without it /detect returns 500
 spacy==3.7.2
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
