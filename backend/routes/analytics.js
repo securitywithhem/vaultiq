@@ -37,7 +37,19 @@ async function readFromHDFS() {
   if (!HDFS_ENABLED || !HDFS_BASE) return null;
 
   try {
-    const hdfsPath = `/vaultiq/results/analytics_latest.json`;
+    // Spark writes analytics_latest.json as a directory (part-*.txt + _SUCCESS);
+    // LISTSTATUS resolves the part file, and also returns the file itself if it's a plain file.
+    const resultsPath = `/vaultiq/results/analytics_latest.json`;
+    const listUrl = `${HDFS_BASE}${resultsPath}?op=LISTSTATUS&user.name=${HDFS_USER}`;
+    const { data: listing } = await axios.get(listUrl, { timeout: 10000 });
+    const statuses = listing?.FileStatuses?.FileStatus || [];
+    const entry = statuses.find(s => s.type === 'FILE' && s.pathSuffix === '')
+      || statuses.find(s => s.type === 'FILE' && s.pathSuffix.startsWith('part-') && s.length > 0);
+    if (!entry) {
+      logger.warn('[analytics] HDFS results path has no readable part file');
+      return null;
+    }
+    const hdfsPath = entry.pathSuffix ? `${resultsPath}/${entry.pathSuffix}` : resultsPath;
     const openUrl = `${HDFS_BASE}${hdfsPath}?op=OPEN&user.name=${HDFS_USER}`;
     const res = await axios.get(openUrl, { timeout: 10000, maxRedirects: 5 });
 

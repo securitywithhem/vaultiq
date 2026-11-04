@@ -1,0 +1,90 @@
+# VaultIQ — Local development infrastructure (HDFS + Spark only)
+#
+# Backend, frontend, AI service and Redis run natively on the host for hot reload:
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Differences from docker-compose.yml:
+#   - The DataNode advertises itself as "localhost" and publishes 9864, so WebHDFS
+#     write redirects (namenode -> datanode) resolve from a backend running on the host.
+#     Do NOT use this in production: there the backend runs inside the Docker network.
+
+name: vaultiq-dev
+
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: vaultiq-namenode
+    platform: linux/amd64
+    ports:
+      - "9870:9870"   # WebHDFS + NameNode UI
+      - "9000:9000"   # HDFS RPC
+    environment:
+      CLUSTER_NAME: vaultiq
+      HADOOP_HEAPSIZE: 256
+      # Allow the datanode to register under a hostname ("localhost") that doesn't reverse-resolve
+      HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check: "false"
+      # In-network clients (hdfs CLI here) must dial the datanode by IP, not "localhost".
+      # The image's MULTIHOMED_NETWORK=1 default forces dfs.client.use.datanode.hostname=true.
+      MULTIHOMED_NETWORK: "0"
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - namenode_data:/hadoop/dfs/name
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: vaultiq-datanode
+    platform: linux/amd64
+    ports:
+      - "9864:9864"   # DataNode HTTP (WebHDFS data transfer)
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+      HADOOP_HEAPSIZE: 256
+      HDFS_CONF_dfs_datanode_hostname: localhost
+    env_file:
+      - ./hadoop.env
+    volumes:
+      - datanode_data:/hadoop/dfs/data
+    depends_on:
+      namenode:
+        condition: service_healthy
+
+  spark-master:
+    image: apache/spark:3.5.3
+    container_name: vaultiq-spark-master
+    command: /opt/spark/sbin/start-master.sh
+    ports:
+      - "8080:8080"   # Spark UI
+      - "7077:7077"
+    environment:
+      SPARK_MASTER_HOST: spark-master
+      SPARK_DAEMON_MEMORY: 256m
+      SPARK_NO_DAEMONIZE: "true"
+    env_file:
+      - backend/.env
+    volumes:
+      - ./bigdata:/opt/spark-jobs
+      - ./bigdata/results:/opt/spark-results
+
+  spark-worker:
+    image: apache/spark:3.5.3
+    container_name: vaultiq-spark-worker
+    command: /opt/spark/sbin/start-worker.sh spark://spark-master:7077
+    environment:
+      SPARK_WORKER_MEMORY: 1g
+      SPARK_WORKER_CORES: 2
+      SPARK_NO_DAEMONIZE: "true"
+    depends_on:
+      - spark-master
+    volumes:
+      - ./bigdata:/opt/spark-jobs
+      - ./bigdata/results:/opt/spark-results
+
+volumes:
+  namenode_data:
+  datanode_data:

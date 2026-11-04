@@ -92,3 +92,6 @@ dump.rdb
 
 # Superpowers brainstorm state
 .superpowers/
+.dev-logs/
+logs/
+bigdata/.wheels/

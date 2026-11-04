@@ -354,18 +354,25 @@ def main():
     AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
     AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
     AWS_REGION     = os.getenv("AWS_REGION", "ap-south-1")
-    S3_BUCKET      = os.getenv("S3_BUCKET_NAME")
+    S3_BUCKET      = os.getenv("S3_BUCKET_NAME") or os.getenv("AWS_BUCKET_NAME")
+    # Same optional S3-compatible endpoint the backend uses (Supabase Storage, MinIO)
+    S3_ENDPOINT    = os.getenv("S3_ENDPOINT")
 
     if AWS_ACCESS_KEY and AWS_SECRET_KEY and S3_BUCKET:
         try:
             import boto3
-            print(f"[analytics_job] Archiving results to AWS S3 bucket: {S3_BUCKET}...")
+            from botocore.config import Config
+            print(f"[analytics_job] Archiving results to S3 bucket: {S3_BUCKET}...")
 
             s3 = boto3.client(
                 's3',
                 aws_access_key_id=AWS_ACCESS_KEY,
                 aws_secret_access_key=AWS_SECRET_KEY,
-                region_name=AWS_REGION
+                region_name=AWS_REGION,
+                **({
+                    "endpoint_url": S3_ENDPOINT,
+                    "config": Config(s3={"addressing_style": "path"}),
+                } if S3_ENDPOINT else {})
             )
 
             # 1. Upload the analytics JSON
