@@ -249,7 +249,7 @@ jobs:
         if: env.SHOULD_BUILD == 'true'
       - uses: docker/setup-buildx-action@v4
         if: env.SHOULD_BUILD == 'true'
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         if: env.SHOULD_BUILD == 'true'
         with:
           context: ${{ matrix.service }}
