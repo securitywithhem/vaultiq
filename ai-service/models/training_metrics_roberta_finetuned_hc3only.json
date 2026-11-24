@@ -1,0 +1,95 @@
+{
+  "base_model": "roberta-base",
+  "data": "HC3 serving-style chunks; train split only (test domains medicine + wiki_csai never seen)",
+  "n_train": 24000,
+  "hyperparameters": {
+    "max_per_class": 12000,
+    "eval_per_class": 1500,
+    "epochs": 2,
+    "batch_size": 8,
+    "grad_accum": 2,
+    "grad_checkpointing": false,
+    "lr": 2e-05,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.06,
+    "max_len": 192,
+    "evals_per_epoch": 4,
+    "patience": 3,
+    "max_steps": 0
+  },
+  "steps_trained": 2250,
+  "train_seconds": 3768,
+  "best_val_auc": 1.0,
+  "results": {
+    "val": {
+      "accuracy": 0.997,
+      "precision": 0.994,
+      "recall": 1.0,
+      "f1": 0.997,
+      "roc_auc": 1.0
+    },
+    "test_heldout_domains": {
+      "accuracy": 0.763,
+      "precision": 0.6789,
+      "recall": 0.998,
+      "f1": 0.8081,
+      "roc_auc": 0.9883
+    }
+  },
+  "history": [
+    {
+      "step": 375,
+      "epoch": 1,
+      "val_accuracy": 0.9933,
+      "val_precision": 0.9888,
+      "val_recall": 0.998,
+      "val_f1": 0.9934,
+      "val_roc_auc": 0.9999
+    },
+    {
+      "step": 750,
+      "epoch": 1,
+      "val_accuracy": 0.9957,
+      "val_precision": 0.994,
+      "val_recall": 0.9973,
+      "val_f1": 0.9957,
+      "val_roc_auc": 0.9999
+    },
+    {
+      "step": 1125,
+      "epoch": 1,
+      "val_accuracy": 0.997,
+      "val_precision": 0.994,
+      "val_recall": 1.0,
+      "val_f1": 0.997,
+      "val_roc_auc": 1.0
+    },
+    {
+      "step": 1500,
+      "epoch": 1,
+      "val_accuracy": 0.993,
+      "val_precision": 0.9862,
+      "val_recall": 1.0,
+      "val_f1": 0.993,
+      "val_roc_auc": 0.9999
+    },
+    {
+      "step": 1875,
+      "epoch": 2,
+      "val_accuracy": 0.995,
+      "val_precision": 0.9901,
+      "val_recall": 1.0,
+      "val_f1": 0.995,
+      "val_roc_auc": 0.9997
+    },
+    {
+      "step": 2250,
+      "epoch": 2,
+      "val_accuracy": 0.9957,
+      "val_precision": 0.9914,
+      "val_recall": 1.0,
+      "val_f1": 0.9957,
+      "val_roc_auc": 0.9999
+    }
+  ]
+}
