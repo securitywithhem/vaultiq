@@ -110,11 +110,98 @@ def _candidates(split: str) -> list[dict]:
 
 def load_chunks(split: str, max_per_class: int) -> list[dict]:
     """Balanced rows of {text: one serving-style chunk, label, source} for the split."""
-    from core.preprocessor import preprocess
-
     rng = random.Random(f"{SEED}-{split}")
     rows = _candidates(split)
     rng.shuffle(rows)
+    return _select_chunks(rows, rng, max_per_class, split)
+
+
+# ── Extra corpora: formal human writing that HC3 lacks ──────────────────────────
+# HC3's human answers are casual (Reddit / Q&A), so a model trained only on HC3 learns
+# "formal = AI". These add formal text on BOTH sides of the label.
+#   wiki_intro — aadityaubhat/GPT-wiki-intro: real Wikipedia intro vs GPT-3 intro on the
+#                SAME title (paired, so topic carries no label signal). Split by title so a
+#                pair never straddles splits; titles named in HC3 test questions are dropped.
+#   pile       — artem9k/ai-text-detection-pile: human essays (shard 0) vs AI web/news text
+#                (shard 6). Split by text hash.
+# Split per source: 10% test / 10% val / 80% train, deterministic.
+EXTRA_SOURCES = ("wiki_intro", "pile")
+WIKI_INTRO_REPO = "aadityaubhat/GPT-wiki-intro"
+PILE_REPO = "artem9k/ai-text-detection-pile"
+
+
+def _hash_split(key: str) -> str:
+    bucket = int(hashlib.md5(key.encode()).hexdigest()[:8], 16) % 100
+    return "test" if bucket < 10 else "val" if bucket < 20 else "train"
+
+
+def _snapshot(repo: str, patterns: list[str]) -> Path:
+    from huggingface_hub import snapshot_download
+    try:
+        return Path(snapshot_download(repo, repo_type="dataset", allow_patterns=patterns, local_files_only=True))
+    except Exception:
+        return Path(snapshot_download(repo, repo_type="dataset", allow_patterns=patterns))
+
+
+def _hc3_test_terms() -> set[str]:
+    """Quoted concept names in HC3 test-domain questions, e.g. 'Please explain what is "X"'."""
+    terms: set[str] = set()
+    with open(HC3_PATH, encoding="utf-8") as f:
+        for line in f:
+            rec = json.loads(line)
+            if rec["source"] in TEST_DOMAINS:
+                terms.update(t.strip().lower() for t in re.findall(r'"([^"]+)"', rec["question"]))
+    return terms
+
+
+def _head(text: str, limit: int = 6000) -> str:
+    """Keep the leading paragraphs of a long document so clean()'s 8000-char cap accepts it."""
+    if len(text) <= limit:
+        return text
+    cut = text.rfind("\n", 0, limit)
+    return text[: cut if cut > limit // 2 else limit]
+
+
+def _extra_candidates(source: str, split: str, rng: random.Random, per_label: int) -> list[dict]:
+    """Up to per_label raw candidates per label for the split (more than needed; cleaning drops some)."""
+    rows: list[dict] = []
+    if source == "wiki_intro":
+        import pandas as pd
+        snap = _snapshot(WIKI_INTRO_REPO, ["*.csv.zip"])
+        df = pd.read_csv(next(snap.glob("*.csv.zip")), usecols=["title", "wiki_intro", "generated_intro"])
+        excluded = _hc3_test_terms()
+        df = df[~df.title.str.lower().isin(excluded)]
+        df = df[df.title.map(_hash_split) == split]
+        df = df.sample(n=min(per_label, len(df)), random_state=rng.randrange(2**31))
+        for r in df.itertuples():
+            rows.append({"text": str(r.wiki_intro), "label": 0, "source": "wiki_intro_human"})
+            rows.append({"text": str(r.generated_intro), "label": 1, "source": "wiki_intro_gpt3"})
+    elif source == "pile":
+        import pyarrow.parquet as pq
+        snap = _snapshot(PILE_REPO, ["data/train-00000-*.parquet", "data/train-00006-*.parquet"])
+        for shard, label, name in (("train-00000-", 0, "pile_human_essay"), ("train-00006-", 1, "pile_ai")):
+            table = pq.read_table(next((snap / "data").glob(f"{shard}*.parquet")), columns=["text"])
+            idx = list(range(table.num_rows))
+            rng.shuffle(idx)
+            texts = table.column("text").take(idx[: per_label * 12]).to_pylist()  # ~10% land in split
+            picked = [t for t in texts if t and _hash_split(t[:300]) == split][:per_label]
+            rows += [{"text": _head(t), "label": label, "source": name} for t in picked]
+    else:
+        raise ValueError(f"unknown extra source {source!r}")
+    return rows
+
+
+def load_extra_chunks(source: str, split: str, max_per_class: int) -> list[dict]:
+    """Balanced serving-style chunks from an extra corpus (see EXTRA_SOURCES)."""
+    rng = random.Random(f"{SEED}-{source}-{split}")
+    rows = _extra_candidates(source, split, rng, per_label=int(max_per_class * 1.6) + 50)
+    rng.shuffle(rows)
+    return _select_chunks(rows, rng, max_per_class, f"{source}/{split}")
+
+
+def _select_chunks(rows: list[dict], rng: random.Random, max_per_class: int, tag: str) -> list[dict]:
+    """Clean, dedupe and chunk candidate rows; one random serving-style chunk per row, class-balanced."""
+    from core.preprocessor import preprocess
 
     out, seen, counts = [], set(), {0: 0, 1: 0}
     for r in rows:
@@ -129,7 +216,10 @@ def load_chunks(split: str, max_per_class: int) -> list[dict]:
         if key in seen:
             continue
         seen.add(key)
-        chunks = [c for c in preprocess(text) if len(c) >= 100]
+        try:
+            chunks = [c for c in preprocess(text) if len(c) >= 100]
+        except ValueError:  # preprocess raises when no sentence survives its cleaning
+            continue
         if not chunks:
             continue
         out.append({"text": rng.choice(chunks), "label": r["label"], "source": r["source"]})
@@ -138,7 +228,7 @@ def load_chunks(split: str, max_per_class: int) -> list[dict]:
     n = min(counts.values())
     balanced = [r for r in out if r["label"] == 1][:n] + [r for r in out if r["label"] == 0][:n]
     rng.shuffle(balanced)
-    print(f"   {split}: {n:,} per class ({len(balanced):,} chunks)")
+    print(f"   {tag}: {n:,} per class ({len(balanced):,} chunks)")
     return balanced
 
 
@@ -200,6 +290,24 @@ def roberta_scores(split: str, max_per_class: int, texts: np.ndarray) -> np.ndar
 
     det = _detector()
     r = np.array([det.roberta_score(t) for t in tqdm(texts, desc=f"roberta[{split}]")], dtype=np.float32)
+    np.savez_compressed(cache, r=r)
+    return r
+
+
+def finetuned_roberta_scores(split: str, max_per_class: int, texts: np.ndarray) -> np.ndarray | None:
+    """Fine-tuned RoBERTa P(AI) per text, cached per checkpoint; None if no checkpoint is loaded."""
+    det = _detector()
+    if det._finetuned_roberta is None:
+        return None
+    weights = max(det.FINETUNED_ROBERTA_PATH.iterdir(), key=lambda p: p.stat().st_mtime)
+    tag = hashlib.md5(f"{weights.name}|{weights.stat().st_mtime}".encode()).hexdigest()[:8]
+    cache = DS / f"roberta_ft_{split}_{max_per_class}_{tag}.npz"
+    if cache.exists():
+        return np.load(cache)["r"]
+    from tqdm import tqdm
+
+    r = np.array([det.finetuned_roberta_score(t) for t in tqdm(texts, desc=f"roberta_ft[{split}]")],
+                 dtype=np.float32)
     np.savez_compressed(cache, r=r)
     return r
 

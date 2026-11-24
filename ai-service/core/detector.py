@@ -74,11 +74,17 @@ LR_MODEL_PATHS = [
 NEURAL_HEAD_PATH = MODELS_DIR / "neural_head.pt"
 NEURAL_HEAD_META_PATH = MODELS_DIR / "neural_head_meta.json"
 ENSEMBLE_CONFIG_PATH = MODELS_DIR / "ensemble_config.json"
+# RoBERTa fine-tuned in-house on HC3 (scripts/finetune_roberta.py); used when present.
+FINETUNED_ROBERTA_PATH = Path(os.environ.get(
+    "FINETUNED_ROBERTA_PATH", MODELS_DIR / "roberta_finetuned"
+))
+FT_MAX_LEN = 192  # token length the checkpoint was trained on (finetune_roberta.py --max-len)
 
 # Ensemble blend weights — overwritten at load time from ENSEMBLE_CONFIG_PATH if present.
 _W_ROBERTA: float = 0.7
 _W_LR: float = 0.3
 _W_NN: float = 0.0
+_W_FT: float = 0.0
 _DETECT_THRESHOLD: float = 0.55  # Loaded from ensemble_config.json at startup
 
 # Global model references
@@ -89,13 +95,15 @@ _lr_model = None
 _gpt2_model = None
 _gpt2_tokenizer = None
 _neural_scorer = None
+_finetuned_roberta = None    # (tokenizer, model) or None
 _using_dummy_lr: bool = False
 
 
 def load_models() -> None:
     """Pre-load all required models for the ensemble."""
     global _roberta_model, _roberta_tokenizer, _lr_model, _using_dummy_lr, _gpt2_model, _gpt2_tokenizer
-    global _W_ROBERTA, _W_LR, _W_NN, _DETECT_THRESHOLD, _roberta_models, _neural_scorer
+    global _W_ROBERTA, _W_LR, _W_NN, _W_FT, _DETECT_THRESHOLD, _roberta_models, _neural_scorer
+    global _finetuned_roberta
 
     start_time = time.time()
 
@@ -108,8 +116,10 @@ def load_models() -> None:
             _W_ROBERTA = float(_cfg.get("w_roberta", _W_ROBERTA))
             _W_LR = float(_cfg.get("w_lr", _W_LR))
             _W_NN = float(_cfg.get("w_nn", _W_NN))
+            _W_FT = float(_cfg.get("w_ft", _W_FT))
             _DETECT_THRESHOLD = float(_cfg.get("threshold", _DETECT_THRESHOLD))
-            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f} nn={_W_NN:.3f} threshold={_DETECT_THRESHOLD:.3f}")
+            logger.info(f"Loaded ensemble weights: roberta={_W_ROBERTA:.3f} lr={_W_LR:.3f} nn={_W_NN:.3f} "
+                        f"ft={_W_FT:.3f} threshold={_DETECT_THRESHOLD:.3f}")
         except Exception as e:
             logger.warning(f"Failed to load ensemble_config.json: {e}")
 
@@ -167,6 +177,16 @@ def load_models() -> None:
                 logger.info(f"Loaded neural head from {NEURAL_HEAD_PATH}")
             except Exception as e:
                 logger.warning(f"Neural head load failed: {e}")
+
+        if (FINETUNED_ROBERTA_PATH / "config.json").exists():
+            try:
+                ft_tok = AutoTokenizer.from_pretrained(FINETUNED_ROBERTA_PATH)
+                ft_mdl = AutoModelForSequenceClassification.from_pretrained(FINETUNED_ROBERTA_PATH)
+                ft_mdl.eval()
+                _finetuned_roberta = (ft_tok, ft_mdl)
+                logger.info(f"Loaded fine-tuned RoBERTa from {FINETUNED_ROBERTA_PATH}")
+            except Exception as e:
+                logger.warning(f"Fine-tuned RoBERTa load failed: {e}")
 
     # 3. Load or create Logistic Regression model (always attempted — LR needs no torch)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -549,6 +569,25 @@ def roberta_score(text: str) -> float:
     return float(sum(scores) / len(scores))
 
 
+def finetuned_roberta_score(text: str) -> float:
+    """
+    COMPONENT 2B — RoBERTa fine-tuned in-house on HC3 (scripts/finetune_roberta.py)
+
+    Label 1 = AI. Returns P(AI), or 0.5 when the checkpoint is not present.
+    """
+    if _finetuned_roberta is None:
+        return 0.5
+    tok, mdl = _finetuned_roberta
+    try:
+        inputs = tok(text, return_tensors="pt", truncation=True, max_length=FT_MAX_LEN)
+        with torch.no_grad():
+            probs = torch.softmax(mdl(**inputs).logits, dim=-1)
+        return float(probs[0][1].item())
+    except Exception as e:
+        logger.warning(f"Fine-tuned RoBERTa scoring failed: {e}")
+        return 0.5
+
+
 def lr_score(text: str) -> float:
     """
     COMPONENT 3 — Logistic Regression on statistical features
@@ -636,17 +675,25 @@ def detect(chunks: list[str]) -> dict[str, Any]:
         }
 
     chunk_scores: list[float] = []
+    # Per-model P(AI) for every successfully scored chunk (only models with a non-zero weight).
+    component_scores: dict[str, list[float]] = {}
 
     for chunk in chunks:
         if not chunk.strip():
             continue
         try:
             all_features = build_feature_vector(chunk)
-            r_score = roberta_score(chunk)
-            l_score = lr_score_enhanced(all_features)
-            score = _W_ROBERTA * r_score + _W_LR * l_score
+            parts = {
+                "roberta_pretrained": (_W_ROBERTA, roberta_score(chunk)),
+                "logistic_regression": (_W_LR, lr_score_enhanced(all_features)),
+            }
             if _W_NN > 0:
-                score += _W_NN * neural_score(chunk, all_features)
+                parts["neural_head"] = (_W_NN, neural_score(chunk, all_features))
+            if _W_FT > 0:
+                parts["roberta_finetuned"] = (_W_FT, finetuned_roberta_score(chunk))
+            score = sum(w * s for w, s in parts.values())
+            for name, (_, s) in parts.items():
+                component_scores.setdefault(name, []).append(s)
 
             chunk_scores.append(score)
         except Exception as e:
@@ -681,10 +728,19 @@ def detect(chunks: list[str]) -> dict[str, Any]:
     else:
         confidence = "low"
 
+    weights = {"roberta_pretrained": _W_ROBERTA, "logistic_regression": _W_LR,
+               "neural_head": _W_NN, "roberta_finetuned": _W_FT}
+    model_scores = [
+        {"model": name, "weight": round(weights[name], 2), "score": round(float(np.mean(vals)), 3)}
+        for name, vals in component_scores.items() if weights[name] > 0
+    ]
+
     return {
         "score": avg_score,
         "verdict": verdict,
         "confidence": confidence,
         "chunk_scores": [round(s, 2) for s in chunk_scores],
+        "model_scores": model_scores,
+        "threshold": round(_DETECT_THRESHOLD, 2),
         "warning": warning,
     }

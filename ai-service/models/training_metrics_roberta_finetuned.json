@@ -1,0 +1,158 @@
+{
+  "base_model": "roberta-base",
+  "data": "serving-style chunks: HC3 train split (test domains medicine + wiki_csai never seen) + extra formal-text sources ['wiki_intro', 'pile'] (80/10/10 hash split)",
+  "n_train": 28000,
+  "hyperparameters": {
+    "max_per_class": 7000,
+    "extra_sources": [
+      "wiki_intro",
+      "pile"
+    ],
+    "extra_per_class": 3500,
+    "extra_val_per_class": 500,
+    "select_val_per_class": 1000,
+    "eval_per_class": 1500,
+    "epochs": 2,
+    "batch_size": 8,
+    "grad_accum": 2,
+    "grad_checkpointing": false,
+    "lr": 2e-05,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.06,
+    "max_len": 192,
+    "evals_per_epoch": 4,
+    "patience": 3,
+    "max_steps": 0
+  },
+  "steps_trained": 3500,
+  "train_seconds": 5918,
+  "selection": "lowest val log loss",
+  "best_step": 2628,
+  "best_val_log_loss": 0.3042,
+  "results": {
+    "hc3_val": {
+      "accuracy": 0.9893,
+      "precision": 0.981,
+      "recall": 0.998,
+      "f1": 0.9894,
+      "roc_auc": 0.9996
+    },
+    "hc3_test": {
+      "accuracy": 0.8857,
+      "precision": 0.8159,
+      "recall": 0.996,
+      "f1": 0.897,
+      "roc_auc": 0.9928
+    },
+    "hc3_test_medicine": {
+      "accuracy": 0.9483,
+      "precision": 0.9102,
+      "recall": 0.9956,
+      "f1": 0.951,
+      "roc_auc": 0.9986
+    },
+    "hc3_test_wiki_csai": {
+      "accuracy": 0.7917,
+      "precision": 0.7048,
+      "recall": 0.9966,
+      "f1": 0.8257,
+      "roc_auc": 0.9781
+    },
+    "wiki_intro_test": {
+      "accuracy": 0.896,
+      "precision": 0.8333,
+      "recall": 0.99,
+      "f1": 0.9049,
+      "roc_auc": 0.9767
+    },
+    "pile_test": {
+      "accuracy": 0.874,
+      "precision": 0.8086,
+      "recall": 0.98,
+      "f1": 0.8861,
+      "roc_auc": 0.9667
+    }
+  },
+  "history": [
+    {
+      "step": 438,
+      "epoch": 1,
+      "val_accuracy": 0.8918,
+      "val_precision": 0.8274,
+      "val_recall": 0.99,
+      "val_f1": 0.9014,
+      "val_roc_auc": 0.9794,
+      "val_log_loss": 0.3587
+    },
+    {
+      "step": 876,
+      "epoch": 1,
+      "val_accuracy": 0.9058,
+      "val_precision": 0.8449,
+      "val_recall": 0.994,
+      "val_f1": 0.9134,
+      "val_roc_auc": 0.9857,
+      "val_log_loss": 0.3536
+    },
+    {
+      "step": 1314,
+      "epoch": 1,
+      "val_accuracy": 0.9227,
+      "val_precision": 0.8759,
+      "val_recall": 0.985,
+      "val_f1": 0.9273,
+      "val_roc_auc": 0.988,
+      "val_log_loss": 0.3234
+    },
+    {
+      "step": 1752,
+      "epoch": 2,
+      "val_accuracy": 0.8708,
+      "val_precision": 0.796,
+      "val_recall": 0.997,
+      "val_f1": 0.8852,
+      "val_roc_auc": 0.9822,
+      "val_log_loss": 0.4658
+    },
+    {
+      "step": 2190,
+      "epoch": 2,
+      "val_accuracy": 0.929,
+      "val_precision": 0.8872,
+      "val_recall": 0.983,
+      "val_f1": 0.9326,
+      "val_roc_auc": 0.9876,
+      "val_log_loss": 0.3538
+    },
+    {
+      "step": 2628,
+      "epoch": 2,
+      "val_accuracy": 0.9343,
+      "val_precision": 0.895,
+      "val_recall": 0.984,
+      "val_f1": 0.9374,
+      "val_roc_auc": 0.9887,
+      "val_log_loss": 0.3042
+    },
+    {
+      "step": 3066,
+      "epoch": 2,
+      "val_accuracy": 0.9257,
+      "val_precision": 0.8769,
+      "val_recall": 0.9905,
+      "val_f1": 0.9303,
+      "val_roc_auc": 0.9882,
+      "val_log_loss": 0.3767
+    },
+    {
+      "step": 3500,
+      "epoch": 2,
+      "val_accuracy": 0.9185,
+      "val_precision": 0.8639,
+      "val_recall": 0.9935,
+      "val_f1": 0.9242,
+      "val_roc_auc": 0.9872,
+      "val_log_loss": 0.446
+    }
+  ]
+}

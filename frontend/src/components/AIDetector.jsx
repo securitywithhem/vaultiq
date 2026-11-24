@@ -76,6 +76,47 @@ const ChunkMap = ({ chunks }) => {
   );
 };
 
+// Per-model P(AI) behind the verdict (AI service `model_scores`), heaviest weight first.
+const MODEL_LABELS = {
+  roberta_finetuned: { name: 'Fine-tuned RoBERTa', kind: 'Transformer · trained in VaultIQ' },
+  roberta_pretrained: { name: 'Pretrained RoBERTa ×2', kind: 'Transformer · ChatGPT + GPT-2 detectors' },
+  neural_head: { name: 'Neural head', kind: 'MLP over embeddings + features' },
+  logistic_regression: { name: 'Logistic regression', kind: 'Statistical · 25 features' },
+};
+
+const ModelBreakdown = ({ models }) => {
+  if (!models?.length) return null;
+  const sorted = [...models].sort((a, b) => b.weight - a.weight);
+  return (
+    <div className="space-y-2 mt-4">
+      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Model Breakdown</p>
+      <div className="space-y-2">
+        {sorted.map((m) => {
+          const label = MODEL_LABELS[m.model] || { name: m.model, kind: '' };
+          const pct = Math.round(m.score * 100);
+          const bar = m.score > 0.7 ? 'bg-red-500' : m.score > 0.4 ? 'bg-amber-400' : 'bg-emerald-500';
+          return (
+            <div key={m.model} className="space-y-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[11px] font-bold text-gray-300 truncate">
+                  {label.name}
+                  <span className="ml-2 font-normal text-gray-600">{label.kind}</span>
+                </span>
+                <span className="text-[10px] font-mono text-gray-400 shrink-0">
+                  {pct}% AI · weight {Math.round(m.weight * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                <div className={`h-full ${bar} opacity-80`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // ─── AIDetector ──────────────────────────────────────────────────────────────
 
 export default function AIDetector() {
@@ -508,6 +549,7 @@ export default function AIDetector() {
                   )}
 
                   <ChunkMap chunks={res.chunk_scores} />
+                  <ModelBreakdown models={res.model_scores} />
                 </div>
               ))}
             </motion.div>
